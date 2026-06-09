@@ -171,7 +171,7 @@ function addPoint(p) {
 async function requestServices() {
   try {
     const facs = await call('services', { point: points[0] });
-    renderStartFacilities(facs);
+    if (points.length === 1) renderStartFacilities(facs); // ignore if a destination was added meanwhile
   } catch (e) { console.error(e); }
 }
 
@@ -222,6 +222,7 @@ async function computeRoute() {
   setStatus('Charting course…'); setHint('');
   try {
     const r = await call('route', { points });
+    if (points.length < 2) return; // points changed while routing
     if (!r || r.error) {
       setStatus('');
       const leg = r && r.legIndex != null ? ` (leg ${r.legIndex + 1})` : '';
