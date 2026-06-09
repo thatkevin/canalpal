@@ -22,17 +22,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install --no-save playwright-core playwright
+      - run: npm install --no-save playwright-core playwright pbf@3 @mapbox/vector-tile@1
       - run: npx playwright install --with-deps chromium
       - run: node scripts/fetch-stoppages.mjs
+      - run: node scripts/fetch-csf.mjs && cp public/data/services.json docs/data/services.json
       - name: Commit if changed
         run: |
-          if ! git diff --quiet -- public/data/stoppages.json docs/data/stoppages.json; then
+          if ! git diff --quiet -- public/data docs/data; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add public/data/stoppages.json docs/data/stoppages.json
-            git commit -m "Update CRT stoppages ($(date -u +%F))"
+            git add public/data/stoppages.json docs/data/stoppages.json public/data/services.json docs/data/services.json
+            git commit -m "Update CRT stoppages + facilities ($(date -u +%F))"
             git push
           else
-            echo "No stoppage changes."
+            echo "No CRT data changes."
           fi

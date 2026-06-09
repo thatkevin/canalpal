@@ -12,7 +12,7 @@
 // chamber counts on the traversed edges.
 
 // Boater service types for the "nearest facilities from here" search.
-const SERVICE_TYPES = new Set(['Water point', 'Fuel / diesel', 'Elsan / chemical toilet', 'Pump-out', 'Sanitary station', 'Rubbish disposal']);
+const SERVICE_TYPES = new Set(['Water point', 'Fuel / diesel', 'Elsan / chemical toilet', 'Pump-out', 'Sanitary station', 'Rubbish disposal', 'Toilets']);
 
 const QUANT = 1e5;            // 5 dp ≈ 1.1 m grid for vertex welding
 const WELD_M = 12;            // bridge near-miss junctions up to this distance

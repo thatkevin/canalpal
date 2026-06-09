@@ -4,12 +4,13 @@ import { CanalGraph } from './graph.js';
 let graph = null;
 
 async function load(base) {
-  const [waterways, locks, facilities] = await Promise.all([
+  const [waterways, locks, facilities, services] = await Promise.all([
     fetch(base + 'data/waterways.geojson').then((r) => r.json()),
     fetch(base + 'data/locks.json').then((r) => r.json()),
     fetch(base + 'data/facilities.json').then((r) => r.json()),
+    fetch(base + 'data/services.json').then((r) => r.json()).catch(() => []), // CRT facilities
   ]);
-  graph = new CanalGraph().build(waterways, locks, facilities);
+  graph = new CanalGraph().build(waterways, locks, facilities.concat(services));
   const c = graph.components();
   return { nodes: graph.nodes.length, edges: graph.edges.length, components: c.count };
 }
