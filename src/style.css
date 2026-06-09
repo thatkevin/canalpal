@@ -216,6 +216,8 @@ dialog menu button[value="save"] { background: var(--teal); color: var(--parch);
 .poi-title { font-family: var(--pirata); font-size: 1.25rem; color: var(--sea); line-height: 1.1; }
 .poi-type { font-size: .95rem; color: var(--wood2); font-style: italic; }
 .poi-link { display: inline-block; margin-top: .35rem; color: var(--teal); text-decoration: underline; font-size: 1rem; }
+.poi-route { display: inline-block; margin-top: .45rem; margin-right: .6rem; padding: .25rem .6rem; background: var(--teal); color: var(--parch); border: 2px solid var(--wood); border-radius: 6px; font-size: 1rem; text-decoration: none; cursor: pointer; }
+.poi-route:active { transform: translateY(1px); }
 
 /* ---- maplibre controls ---- */
 /* lift bottom controls + attribution clear of the (closed) journey bar */

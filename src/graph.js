@@ -233,7 +233,8 @@ export class CanalGraph {
 
   // Nearest boater services (water, fuel, elsan, rubbish, pump-out) reachable
   // along the network from a point, in any direction. One per type.
-  nearestServices(start, maxMiles = 12) {
+  nearestServices(start, opts = {}) {
+    const { speedMph = 3, lockMinutes = 12, hoursPerDay = 7, maxDays = 3 } = opts;
     const se = this._nearestEdge(start.lng, start.lat);
     if (!se) return [];
     const N = this.nodes.length;
@@ -242,19 +243,27 @@ export class CanalGraph {
     const heap = new MinHeap();
     dist[se.a] = haversine(se.lng, se.lat, ...this.nodes[se.a]); heap.push(se.a, dist[se.a]);
     dist[se.b] = haversine(se.lng, se.lat, ...this.nodes[se.b]); heap.push(se.b, dist[se.b]);
-    const maxM = maxMiles * 1609.344;
+    // distance ceiling for `maxDays` of cruising (locks only make it slower, so
+    // this is a safe upper bound); the per-service time check does the rest.
+    const maxHours = maxDays * hoursPerDay;
+    const maxM = maxHours * speedMph * 1609.344;
+    const time = (miles, locks) => miles / speedMph + (locks * lockMinutes) / 60;
     const found = new Map();
     let remaining = SERVICE_TYPES.size;
+    let settled = 0;
     while (heap.size && remaining > 0) {
       const { node, cost } = heap.pop();
       if (cost > dist[node]) continue;
       if (cost > maxM) break;
+      if (++settled > 80000) break; // bound work when sparse types are never found
+
       const facs = this.facByNode.get(node);
       if (facs) for (const f of facs) {
-        if (!found.has(f.type)) {
-          found.set(f.type, { type: f.type, title: f.title, lng: f.lng, lat: f.lat, miles: cost / 1609.344, locks: locksTo[node], bearing: bearing(start.lng, start.lat, f.lng, f.lat) });
-          remaining--;
-        }
+        if (found.has(f.type)) continue;
+        const miles = cost / 1609.344, locks = locksTo[node], hrs = time(miles, locks);
+        if (hrs > maxHours) continue; // beyond the day budget
+        found.set(f.type, { type: f.type, title: f.title, lng: f.lng, lat: f.lat, miles, locks, hours: hrs, days: Math.max(1, Math.ceil(hrs / hoursPerDay)), bearing: bearing(start.lng, start.lat, f.lng, f.lat) });
+        remaining--;
       }
       for (const e of this.adj[node]) {
         const nd = cost + e.w;
@@ -279,6 +288,13 @@ export class CanalGraph {
     }
     sizes.sort((a, b) => b - a);
     return { count: comp, sizes };
+  }
+
+  // Nearest point on the navigable network to an arbitrary point (for snapping
+  // a tapped/dragged marker onto the canal).
+  snap(point) {
+    const e = this._nearestEdge(point.lng, point.lat);
+    return e ? { lng: e.lng, lat: e.lat, dist: e.dist } : null;
   }
 
   // ---- routing ----

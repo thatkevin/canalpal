@@ -33,7 +33,7 @@ console.log('✓ "use current location" offered');
 await page.click('#use-loc');
 await page.waitForFunction(() => /destination/i.test(document.getElementById('hint')?.innerHTML || ''), { timeout: 5000 });
 console.log('✓ current location set as start');
-await page.click('#btn-reset'); // clear before the routing test
+await page.click('#btn-undo'); // one point set → undo clears it
 
 // Drive the app directly via its map (more reliable than synthetic canvas clicks):
 // dispatch two clicks at canal coordinates through MapLibre's project().
@@ -51,7 +51,7 @@ const result = await page.evaluate(async () => {
   click(a);
   await new Promise((r) => setTimeout(r, 300));
   click(b);
-  await new Promise((r) => setTimeout(r, 2500));
+  await new Promise((r) => setTimeout(r, 5000));
   const panel = document.getElementById('route-summary')?.textContent || '';
   const visible = !document.getElementById('panel').classList.contains('hidden');
   return { panel, visible };
@@ -60,7 +60,7 @@ const result = await page.evaluate(async () => {
 console.log('route result:', JSON.stringify(result));
 
 // --- search ---
-await page.click('#btn-reset');
+for (let i = 0; i < 3; i++) await page.click('#btn-undo'); // clear any points
 await page.fill('#search', 'Tardebigge');
 await page.waitForSelector('#search-results li', { timeout: 5000 });
 const firstResult = (await page.textContent('#search-results li .r-name'))?.trim();
@@ -71,7 +71,7 @@ const hasTardebigge = await page.locator('#search-results li', { hasText: 'Tarde
 const via = await page.evaluate(async () => {
   const map = window.__map;
   const click = (ll) => map.fire('click', { lngLat: ll, point: map.project(ll), originalEvent: { target: map.getCanvas(), preventDefault() {}, stopPropagation() {}, type: 'click' } });
-  document.getElementById('btn-reset').click();
+  for (let i = 0; i < 3; i++) document.getElementById('btn-undo').click();
   click({ lng: -2.0680, lat: 52.3090 }); // Tardebigge top area
   await new Promise((r) => setTimeout(r, 200));
   click({ lng: -1.9717, lat: 52.3486 }); // Alvechurch (via)

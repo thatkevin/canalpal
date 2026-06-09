@@ -1,4 +1,4 @@
-import { createMap, maplibregl, protocol, POI_LAYERS, setRoute, setRouteFacilities, setRouteLocks, cycleBasemap, fitRoute } from './map.js';
+import { createMap, maplibregl, protocol, POI_LAYERS, setRoute, setRouteFacilities, setRouteLocks, fitRoute } from './map.js';
 import { estimate, formatDuration, getSettings, saveSettings, correctionFactor, logTrip } from './time-model.js';
 import RouterWorker from './router.worker.js?worker';
 
@@ -158,9 +158,18 @@ function attachMapHandlers() {
 boot();
 
 // --- waypoints + draggable markers ---
-function addPoint(p) {
+let seq = 0; // bumped on every state change so stale async renders are ignored
+
+// Snap a point onto the nearest navigable water (the marker "jumps" to the canal).
+async function snapPoint(p) {
+  try { const s = await call('snap', { point: p }); if (s) { p.lng = s.lng; p.lat = s.lat; } } catch { /* keep as-is */ }
+  return p;
+}
+
+async function addPoint(p) {
   if (!ready) return;
-  if (p.name === undefined) Object.assign(p, nameFor(p.lng, p.lat));
+  await snapPoint(p);
+  Object.assign(p, nameFor(p.lng, p.lat));
   points.push(p);
   renderMarkers();
   if (points.length >= 2) computeRoute();
@@ -169,9 +178,10 @@ function addPoint(p) {
 
 // With only a start set, show the nearest boater services from there.
 async function requestServices() {
+  const my = ++seq;
   try {
-    const facs = await call('services', { point: points[0] });
-    if (points.length === 1) renderStartFacilities(facs); // ignore if a destination was added meanwhile
+    const facs = await call('services', { point: points[0], settings: { ...getSettings(), maxDays: 3 } });
+    if (my === seq && points.length === 1) renderStartFacilities(facs); // ignore if superseded
   } catch (e) { console.error(e); }
 }
 
@@ -183,20 +193,29 @@ function renderMarkers() {
     el.className = 'wp wp-' + role;
     el.innerHTML = `<span>${role === 'via' ? i : ''}</span>`;
     const m = new maplibregl.Marker({ element: el, draggable: true, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(map);
-    m.on('dragend', () => {
+    m.on('dragend', async () => {
       const ll = m.getLngLat();
-      points[i] = { lng: ll.lng, lat: ll.lat, ...nameFor(ll.lng, ll.lat) };
-      if (points.length >= 2) computeRoute(); else updateHint();
+      const np = await snapPoint({ lng: ll.lng, lat: ll.lat });
+      points[i] = { ...np, ...nameFor(np.lng, np.lat) };
+      m.setLngLat([np.lng, np.lat]); // jump the pin onto the canal
+      if (points.length >= 2) computeRoute();
+      else { requestServices(); updateHint(); }
     });
     return m;
   });
+  updateUndoIcon();
 }
 
-function undo() {
-  if (!points.length) return;
-  points.pop(); renderMarkers();
+// Broom for 0–1 points (the button clears); undo arrow for 2+ (removes a point).
+function updateUndoIcon() { $('btn-undo').textContent = points.length <= 1 ? '🧹' : '↶'; }
+
+// One button: undo the last point, or clear everything when none remain.
+function undoOrClear() {
+  if (points.length === 0) { reset(); return; }
+  points.pop(); popup?.remove(); renderMarkers();
   if (points.length >= 2) computeRoute();
-  else { lastRoute = null; clearRouteOnly(); updateHint(); }
+  else if (points.length === 1) { lastRoute = null; setRoute(map, null); setRouteLocks(map, null); requestServices(); updateHint(); }
+  else reset(); // removed the last point → full clear
 }
 function reset() {
   points = []; lastRoute = null; renderMarkers();
@@ -219,10 +238,11 @@ function nameFor(lng, lat) {
 }
 
 async function computeRoute() {
+  const my = ++seq;
   setStatus('Charting course…'); setHint('');
   try {
     const r = await call('route', { points });
-    if (points.length < 2) return; // points changed while routing
+    if (my !== seq || points.length < 2) return; // superseded by a newer action
     if (!r || r.error) {
       setStatus('');
       const leg = r && r.legIndex != null ? ` (leg ${r.legIndex + 1})` : '';
@@ -299,7 +319,7 @@ function renderStartFacilities(facs) {
   $('route-summary').innerHTML = '<p class="muted small">Nearest boater services from here. Tap or search a destination to plan a journey.</p>';
   $('route-facilities').innerHTML = facs.length
     ? '<h3>Nearest services</h3>' + facs.map((f, i) =>
-        `<div class="fac" data-fi="${i}"><span class="fac-emoji">${emojiFor(f.type)}</span><span class="fac-name">${escapeHtml(f.type)}</span><span class="fac-mi">${arrowFor(f.bearing)} ${f.miles.toFixed(1)} mi · ${f.locks} lk</span></div>`).join('')
+        `<div class="fac" data-fi="${i}"><span class="fac-emoji">${emojiFor(f.type)}</span><span class="fac-name">${escapeHtml(f.type)}</span><span class="fac-mi">${arrowFor(f.bearing)} ${f.miles.toFixed(1)}mi · ${f.locks}lk · ${f.days}d</span></div>`).join('')
     : '<p class="muted small">No mapped services within ~12 miles.</p>';
   $('route-facilities').querySelectorAll('.fac').forEach((el) => {
     const f = facs[+el.dataset.fi];
@@ -334,8 +354,12 @@ function showPoiPopup(lngLat, { title, type, id }) {
   popup?.remove();
   let html = `<div class="poi-title">${escapeHtml(title || '')}</div>`;
   if (type) html += `<div class="poi-type">${escapeHtml(type)}</div>`;
+  // offer to add this place to the journey once a start is set
+  if (points.length >= 1) html += `<a class="poi-route" href="#">🧭 Route to here</a>`;
   if (id) html += `<a class="poi-link" href="${CANALPLAN}${id}" target="_blank" rel="noopener">View on CanalPlanAC ↗</a>`;
   popup = new maplibregl.Popup({ offset: 14 }).setLngLat(lngLat).setHTML(html).addTo(map);
+  const link = popup.getElement()?.querySelector('.poi-route');
+  if (link) link.onclick = (e) => { e.preventDefault(); popup?.remove(); addPoint({ lng: lngLat.lng, lat: lngLat.lat, name: title || type, id: id || '' }); };
 }
 
 // --- trip logging (learned weighting) ---
@@ -449,9 +473,7 @@ $('panel-header').onclick = () => setCollapsed(!$('panel').classList.contains('c
 function showError(t) { setHint(`<span class="err">${escapeHtml(t)}</span>`); }
 
 // --- toolbar ---
-$('btn-undo').onclick = undo;
-$('btn-reset').onclick = reset;
-$('btn-basemap').onclick = () => { const n = cycleBasemap(map); setStatus(n); setTimeout(() => setStatus(''), 1500); };
+$('btn-undo').onclick = undoOrClear;
 function askForLocation() {
   try { map?._geolocate?.trigger(); } catch { /* needs gesture */ }
   // A one-shot getCurrentPosition is more reliable than the control's
