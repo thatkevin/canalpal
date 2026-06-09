@@ -383,7 +383,8 @@ function renderStartFacilities(facs) {
     if (seen.has(em)) continue; seen.add(em);
     bits.push(`${em} ${arrowFor(f.bearing)} ${f.miles.toFixed(1)}mi`);
   }
-  summaryText = bits.length ? 'Nearest  ' + bits.join('   ') : 'No facilities within ~12 mi';
+  const label = points[0]?.name || 'Nearest';
+  summaryText = bits.length ? `${label}  ` + bits.join('   ') : `${label} — no services within 3 days`;
 
   $('route-breadcrumb').innerHTML = `<b>${escapeHtml(points[0].name || 'Start')}</b>`;
   $('route-warning').innerHTML = '';
