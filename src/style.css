@@ -18,6 +18,24 @@
   --body: 'IM Fell', Georgia, 'Times New Roman', serif;
 }
 
+/* ---- gongoozler: plain, no-nonsense theme ---- */
+:root[data-theme="gongoozler"] {
+  --sea: #2c3e50; --sea2: #34495e;
+  --parch: #ffffff; --parch2: #eef1f4; --rope: #d4d9de; --wood: #9aa4ad; --wood2: #5a6570;
+  --brass: #2c3e50; --ink: #1f2933; --red: #c0392b; --teal: #2563aa;
+  --pirata: -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --body: -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+:root[data-theme="gongoozler"] #brand-parrot,
+:root[data-theme="gongoozler"] .ob-hero,
+:root[data-theme="gongoozler"] .ob-warn img { display: none; }
+:root[data-theme="gongoozler"] #topbar strong { text-shadow: none; letter-spacing: 0; }
+:root[data-theme="gongoozler"] .stat .lbl,
+:root[data-theme="gongoozler"] h3,
+:root[data-theme="gongoozler"] .r-type { letter-spacing: 0; }
+/* calmer fonts: body text smaller (the pirate fonts ran large) */
+:root[data-theme="gongoozler"] { font-size: 15px; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; font-family: var(--body); color: var(--ink); background: var(--sea); }
 #map { position: absolute; inset: 0; }

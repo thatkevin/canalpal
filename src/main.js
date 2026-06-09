@@ -41,6 +41,18 @@ const SERVICE_EMOJI = FACILITY_EMOJI;
 const ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
 const arrowFor = (b) => ARROWS[Math.round((((b % 360) + 360) % 360) / 45) % 8];
 
+// --- theme (pirate | gongoozler) ---
+let theme = localStorage.getItem('cp.theme') || 'pirate';
+const t = (pirate, plain) => (theme === 'gongoozler' ? plain : pirate);
+function applyTheme() {
+  document.documentElement.dataset.theme = theme;
+  $('credit').innerHTML = t(
+    `☠ Charts plundered fair an' square — with thanks — from the good crew at <a href="https://canalplan.org.uk" target="_blank" rel="noopener">CanalPlanAC</a>. Base waters © OpenStreetMap. ⚓`,
+    `Mapping data from <a href="https://canalplan.org.uk" target="_blank" rel="noopener">CanalPlanAC</a>, used with thanks. Base map © OpenStreetMap contributors.`
+  );
+}
+applyTheme();
+
 // --- boot: onboarding consent → one-time chart download → map + network ---
 const PM_URL = BASE + 'data/canalplan.pmtiles';
 
@@ -239,7 +251,7 @@ function nameFor(lng, lat) {
 
 async function computeRoute() {
   const my = ++seq;
-  setStatus('Charting course…'); setHint('');
+  setStatus(t('Charting course…', 'Calculating…')); setHint('');
   try {
     const r = await call('route', { points });
     if (my !== seq || points.length < 2) return; // superseded by a newer action
@@ -267,8 +279,13 @@ function renderSummary(r) {
 
   renderBreadcrumb();
 
+  const names = r.excludedNames.length ? r.excludedNames.slice(0, 2).map(escapeHtml).join(' & ') + ' ' : t('These waters ', 'this water ');
+  const hasHave = r.excludedNames.length === 1 ? 'is' : (r.excludedNames.length ? 'are' : 'is');
   $('route-warning').innerHTML = r.excludedMiles > 0.02
-    ? `<div class="warn">☠ <span><b>Don't be a fool!</b> ${r.excludedNames.length ? r.excludedNames.slice(0, 2).map(escapeHtml).join(' & ') + ' ' : 'These waters '}${r.excludedNames.length === 1 ? 'has' : 'have'} been plundered and can't be sailed - ${r.excludedMiles.toFixed(1)}mi of your course runs aground.</span></div>`
+    ? `<div class="warn">${t('☠', '⚠')} <span>${t(
+        `<b>Don't be a fool!</b> ${names}${r.excludedNames.length === 1 ? 'has' : (r.excludedNames.length ? 'have' : 'has')} been plundered and can't be sailed - ${r.excludedMiles.toFixed(1)}mi of your course runs aground.`,
+        `<b>Note:</b> ${names}${hasHave} disused or unnavigable - ${r.excludedMiles.toFixed(1)} mi of this route may not be passable by boat.`
+      )}</span></div>`
     : '';
 
   $('route-summary').innerHTML = `
@@ -279,7 +296,7 @@ function renderSummary(r) {
       <div class="stat"><span class="big">${est.days}</span><span class="lbl">day${est.days === 1 ? '' : 's'}*</span></div>
     </div>
     <p class="muted small">*at ${s.hoursPerDay} hrs/day, ${s.speedMph} mph, ${s.lockMinutes} min/lock${est.samples >= 2 ? ` · ×${est.factor.toFixed(2)} from ${est.samples} logged trips` : ''}. Tap the water to add a stop, or drag a pin.</p>
-    <button id="btn-log" class="primary">Log this as a completed voyage…</button>
+    <button id="btn-log" class="primary">${t('Log this as a completed voyage…', 'Log this as a completed trip…')}</button>
   `;
 
   const facs = r.facilities;
@@ -364,13 +381,13 @@ function showPoiPopup(lngLat, { title, type, id }) {
 
 // --- trip logging (learned weighting) ---
 function logTripFlow(r, est) {
-  const txt = prompt(`How long did this voyage actually take (hours)?\n\nPredicted: ${est.hours.toFixed(1)} hr for ${r.miles.toFixed(1)} mi & ${r.locks} locks.`, est.hours.toFixed(1));
+  const txt = prompt(`How long did this ${t('voyage', 'trip')} actually take (hours)?\n\nPredicted: ${est.hours.toFixed(1)} hr for ${r.miles.toFixed(1)} mi & ${r.locks} locks.`, est.hours.toFixed(1));
   if (txt == null) return;
   const actual = parseFloat(txt);
   if (!isFinite(actual) || actual <= 0) return;
   logTrip({ miles: r.miles, locks: r.locks, predictedHours: est.hours, actualHours: actual });
   const { factor, samples } = correctionFactor();
-  setStatus(`Logged. New correction ×${factor.toFixed(2)} (${samples} voyages).`);
+  setStatus(`Logged. New correction ×${factor.toFixed(2)} (${samples} ${t('voyages', 'trips')}).`);
   setTimeout(() => setStatus(''), 4000);
   renderSummary(r);
 }
@@ -488,7 +505,7 @@ function locateMe() {
   if (userLocation) { map.flyTo({ center: [userLocation.lng, userLocation.lat], zoom: 14 }); }
   try { map._geolocate?.trigger(); } catch { /* needs gesture */ }
   if (!navigator.geolocation) { setStatus('No location on this device'); setTimeout(() => setStatus(''), 3000); return; }
-  setStatus('Findin’ ye…');
+  setStatus(t('Findin’ ye…', 'Finding you…'));
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       userLocation = { lng: pos.coords.longitude, lat: pos.coords.latitude };
@@ -505,12 +522,17 @@ $('btn-locate').onclick = locateMe;
 $('btn-settings').onclick = () => {
   const s = getSettings();
   $('set-speed').value = s.speedMph; $('set-lock').value = s.lockMinutes; $('set-hours').value = s.hoursPerDay;
+  $('set-theme').value = theme;
+  const trips = t('voyages', 'trips');
   const { factor, samples } = correctionFactor(s);
-  $('calib-note').textContent = samples >= 2 ? `Calibrated from ${samples} voyages: predictions ×${factor.toFixed(2)}.` : 'Log a couple of voyages and predictions self-calibrate.';
+  $('calib-note').textContent = samples >= 2 ? `Calibrated from ${samples} ${trips}: predictions ×${factor.toFixed(2)}.` : `Log a couple of ${trips} and predictions self-calibrate.`;
   $('settings').showModal();
 };
 $('set-save').addEventListener('click', () => {
   saveSettings({ speedMph: clamp(+$('set-speed').value, 1, 8, 3), lockMinutes: clamp(+$('set-lock').value, 1, 40, 12), hoursPerDay: clamp(+$('set-hours').value, 2, 14, 7) });
+  theme = $('set-theme').value === 'gongoozler' ? 'gongoozler' : 'pirate';
+  localStorage.setItem('cp.theme', theme);
+  applyTheme();
   if (lastRoute) renderSummary(lastRoute);
 });
 

@@ -80,9 +80,14 @@
         <label>Cruising hours per day
           <input id="set-hours" type="number" min="2" max="14" step="0.5" />
         </label>
+        <label>Theme
+          <select id="set-theme">
+            <option value="pirate">Pirate</option>
+            <option value="gongoozler">Gongoozler (plain)</option>
+          </select>
+        </label>
         <p id="calib-note" class="muted"></p>
-        <p class="credit">☠ Charts plundered fair an' square — with thanks — from the good crew at
-          <a href="https://canalplan.org.uk" target="_blank" rel="noopener">CanalPlanAC</a>. Base waters © OpenStreetMap. ⚓</p>
+        <p class="credit" id="credit"></p>
         <menu>
           <button value="cancel">Close</button>
           <button id="set-save" value="save">Save</button>
