@@ -4,7 +4,9 @@ import { Protocol } from 'pmtiles';
 
 export { maplibregl };
 
-const protocol = new Protocol();
+// Shared so main.js can register a pre-downloaded in-memory archive (GitHub
+// Pages ignores Range requests, so we download the .pmtiles once ourselves).
+export const protocol = new Protocol();
 maplibregl.addProtocol('pmtiles', protocol.tile);
 
 const BASE = import.meta.env.BASE_URL || './';
@@ -31,7 +33,7 @@ export function createMap(container) {
       glyphs: BASE + 'glyphs/{fontstack}/{range}.pbf',
       sources: {
         base: BASES.colour.source,
-        canalplan: { type: 'vector', url: 'pmtiles://' + BASE + 'data/canalplan.pmtiles', attribution: '<a href="https://canalplan.org.uk">© CanalPlanAC</a>' },
+        canalplan: { type: 'vector', url: 'pmtiles://canalplan', attribution: '<a href="https://canalplan.org.uk">© CanalPlanAC</a>' },
         route: { type: 'geojson', data: empty() },
         routefac: { type: 'geojson', data: empty() },
         routelocks: { type: 'geojson', data: empty() },
@@ -80,6 +82,7 @@ export function createMap(container) {
   map._geolocate = geolocate;
 
   map.on('load', () => addLockArrow(map));
+  map.on('styleimagemissing', (e) => { if (e.id === 'lock-arrow') addLockArrow(map); });
   return map;
 }
 

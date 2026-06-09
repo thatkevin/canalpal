@@ -4,7 +4,7 @@ dist/
 .pw/
 .env.local
 .envrc.local
-data/
+/data/
 smoke.png
 map-*.png
 scripts/_*.mjs

@@ -31,17 +31,11 @@ export default defineConfig(({ command }) => ({
         maximumFileSizeToCacheInBytes: 80 * 1024 * 1024,
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.endsWith('.pmtiles'),
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'pmtiles',
-              rangeRequests: true,
-              expiration: { maxEntries: 4 },
-            },
-          },
-          {
-            // Raster basemap tiles (CARTO coloured/mono) -> cache visited tiles
-            // so areas you've panned over keep working offline ("nearly offline").
+            // NB: the .pmtiles archive is downloaded + cached by the app itself
+            // (Cache Storage 'cp-archive'), because GitHub Pages ignores Range
+            // requests — so it's deliberately not handled here.
+            // Raster basemap tiles (CARTO coloured/mono): cache visited tiles so
+            // areas you've panned over keep working offline ("nearly offline").
             urlPattern: ({ url }) => /basemaps\.cartocdn\.com|tile\.openstreetmap\.org/.test(url.host),
             handler: 'CacheFirst',
             options: {

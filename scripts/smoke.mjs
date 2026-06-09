@@ -20,6 +20,9 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 
 await page.goto(URL, { waitUntil: 'load' });
 
+// click through the onboarding consent screen
+await page.click('#ob-proceed', { timeout: 8000 }).catch(() => {});
+
 // wait for worker init: status text shows "ready"
 await page.waitForFunction(() => /ready/.test(document.getElementById('status')?.textContent || ''), { timeout: 30000 });
 console.log('✓ network loaded:', await page.locator('#status').textContent());

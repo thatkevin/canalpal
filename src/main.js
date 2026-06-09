@@ -1,4 +1,4 @@
-import { createMap, maplibregl, POI_LAYERS, setRoute, setRouteFacilities, setRouteLocks, cycleBasemap, fitRoute } from './map.js';
+import { createMap, maplibregl, protocol, POI_LAYERS, setRoute, setRouteFacilities, setRouteLocks, cycleBasemap, fitRoute } from './map.js';
 import { estimate, formatDuration, getSettings, saveSettings, correctionFactor, logTrip } from './time-model.js';
 import RouterWorker from './router.worker.js?worker';
 
@@ -24,41 +24,96 @@ function call(type, payload) {
 }
 
 // --- state ---
-const map = createMap('map');
-window.__map = map; // handle for smoke tests / debugging
+let map = null;
 let points = [];        // [{lng,lat,name,id}]
 let markers = [];
 let lastRoute = null, summaryText = 'Journey', userLocation = null, ready = false, popup = null;
 
-map._geolocate?.on('geolocate', (e) => {
-  userLocation = { lng: e.coords.longitude, lat: e.coords.latitude };
-  if (points.length === 0) promptForStart();
-});
+// --- boot: onboarding consent → one-time chart download → map + network ---
+const PM_URL = BASE + 'data/canalplan.pmtiles';
 
-// Load the routing network independently of map tiles, so the planner is usable
-// even if tiles are slow or a tile source hiccups.
-(async () => {
-  setStatus('Loading network…');
+async function archiveCached() {
+  try { const c = await caches.open('cp-archive'); return !!(await c.match(PM_URL)); } catch { return false; }
+}
+function setProgress(pct, label) {
+  const f = $('ob-bar-fill'); if (f) f.style.width = pct + '%';
+  const t = $('ob-pct'); if (t) t.textContent = label || `Loadin' charts… ${pct}%`;
+}
+// Download the .pmtiles archive once (GitHub Pages ignores Range, so PMTiles
+// can't stream it) and keep it in Cache Storage for instant offline reloads.
+async function getArchiveBlob(onProgress) {
+  const cache = await caches.open('cp-archive');
+  const hit = await cache.match(PM_URL);
+  if (hit) return hit.blob();
+  const res = await fetch(PM_URL);
+  if (!res.ok) throw new Error('charts ' + res.status);
+  const total = +res.headers.get('content-length') || 46320028;
+  const reader = res.body.getReader();
+  const chunks = []; let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value); got += value.length;
+    onProgress?.(Math.min(99, Math.round((got / total) * 100)));
+  }
+  const blob = new Blob(chunks, { type: 'application/octet-stream' });
+  try { await cache.put(PM_URL, new Response(blob.slice(), { headers: { 'content-type': 'application/octet-stream' } })); } catch { /* over quota — fine */ }
+  return blob;
+}
+
+async function boot() {
+  const cached = await archiveCached();
+  if (!cached) {
+    // first visit: wait for the user to consent to the download
+    await new Promise((res) => { $('ob-proceed').onclick = res; });
+  }
+  $('ob-proceed').classList.add('hidden');
+  $('ob-progress').classList.remove('hidden');
+  setProgress(cached ? 60 : 0, cached ? "Hoistin' the sails…" : "Loadin' charts… 0%");
+
+  // load the routing network in parallel with the chart download
+  const initP = call('init', { base: BASE }).catch((e) => { console.error(e); return null; });
+
   try {
-    const stats = await call('init', { base: BASE });
-    ready = true;
-    setStatus(`${stats.nodes.toLocaleString()} points · ready`);
-    setTimeout(() => setStatus(''), 2500);
-    $('loading').classList.add('gone');
-    setTimeout(() => $('loading')?.remove(), 600);
-    askForLocation();
-  } catch (err) { setStatus('Failed to load chart'); console.error(err); }
-})();
+    const blob = await getArchiveBlob((p) => setProgress(p));
+    const { PMTiles, FileSource } = await import('pmtiles');
+    protocol.add(new PMTiles(new FileSource(new File([blob], 'canalplan.pmtiles'))));
+  } catch (e) { console.error('chart load failed', e); }
+  setProgress(100, "Charts aboard! Settin' sail…");
 
-// --- map click: open a POI popup, else drop a waypoint ---
-map.on('click', (e) => {
-  if (!ready) return;
-  const feats = map.queryRenderedFeatures(e.point, { layers: [...POI_LAYERS, 'routefac'] });
-  if (feats.length) { showPoiPopup(e.lngLat, poiFromFeature(feats[0])); return; }
-  addPoint({ lng: e.lngLat.lng, lat: e.lngLat.lat });
-});
-map.on('mouseenter', 'pl-jct', () => (map.getCanvas().style.cursor = 'pointer'));
-map.on('mouseleave', 'pl-jct', () => (map.getCanvas().style.cursor = ''));
+  map = createMap('map');
+  window.__map = map;
+  attachMapHandlers();
+
+  const stats = await initP;
+  ready = true;
+  if (stats) { setStatus(`${stats.nodes.toLocaleString()} points · ready`); setTimeout(() => setStatus(''), 2500); }
+
+  $('onboarding').classList.add('gone');
+  setTimeout(() => $('onboarding')?.remove(), 600);
+  askForLocation();
+}
+
+function attachMapHandlers() {
+  map._geolocate?.on('geolocate', (e) => {
+    userLocation = { lng: e.coords.longitude, lat: e.coords.latitude };
+    if (points.length === 0) promptForStart();
+  });
+  map._geolocate?.on('error', (e) => { setStatus('Location: ' + (e?.message || 'unavailable')); setTimeout(() => setStatus(''), 4000); });
+  map.on('error', () => {});
+
+  // map click: open a POI popup, else drop a waypoint
+  map.on('click', (e) => {
+    if (!ready) return;
+    const feats = map.queryRenderedFeatures(e.point, { layers: [...POI_LAYERS, 'routefac'] });
+    if (feats.length) { showPoiPopup(e.lngLat, poiFromFeature(feats[0])); return; }
+    addPoint({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+  });
+  map.on('mouseenter', 'pl-jct', () => (map.getCanvas().style.cursor = 'pointer'));
+  map.on('mouseleave', 'pl-jct', () => (map.getCanvas().style.cursor = ''));
+}
+
+boot();
 
 // --- waypoints + draggable markers ---
 function addPoint(p) {
@@ -141,7 +196,7 @@ function renderSummary(r) {
   renderBreadcrumb();
 
   $('route-warning').innerHTML = r.excludedMiles > 0.02
-    ? `<div class="warn">⚠ <span><b>Heads up:</b> this route uses ${r.excludedMiles.toFixed(1)} mi of disused / unnavigable water${r.excludedNames.length ? ` (${r.excludedNames.slice(0, 2).map(escapeHtml).join(', ')}${r.excludedNames.length > 2 ? '…' : ''})` : ''}. You may not get a boat through.</span></div>`
+    ? `<div class="warn">☠ <span><b>Don't be a fool!</b> ${r.excludedNames.length ? r.excludedNames.slice(0, 2).map(escapeHtml).join(' & ') + ' ' : 'These waters '}${r.excludedNames.length === 1 ? 'has' : 'have'} been plundered an' can't be sailed — ${r.excludedMiles.toFixed(1)} mi o' yer course runs aground.</span></div>`
     : '';
 
   $('route-summary').innerHTML = `
@@ -318,9 +373,31 @@ function showError(t) { setHint(`<span class="err">${escapeHtml(t)}</span>`); }
 $('btn-undo').onclick = undo;
 $('btn-reset').onclick = reset;
 $('btn-basemap').onclick = () => { const n = cycleBasemap(map); setStatus(n); setTimeout(() => setStatus(''), 1500); };
-function askForLocation() { try { map._geolocate?.trigger(); } catch { /* needs gesture */ } }
-function locateMe() { if (userLocation) map.flyTo({ center: [userLocation.lng, userLocation.lat], zoom: 14 }); askForLocation(); }
-map.on('error', () => {});
+function askForLocation() {
+  try { map?._geolocate?.trigger(); } catch { /* needs gesture */ }
+  // A one-shot getCurrentPosition is more reliable than the control's
+  // watchPosition (which on some platforms throws kCLErrorLocationUnknown).
+  navigator.geolocation?.getCurrentPosition(
+    (pos) => { userLocation = { lng: pos.coords.longitude, lat: pos.coords.latitude }; if (points.length === 0) promptForStart(); },
+    () => { /* silent on the automatic attempt */ },
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+  );
+}
+function locateMe() {
+  if (userLocation) { map.flyTo({ center: [userLocation.lng, userLocation.lat], zoom: 14 }); }
+  try { map._geolocate?.trigger(); } catch { /* needs gesture */ }
+  if (!navigator.geolocation) { setStatus('No location on this device'); setTimeout(() => setStatus(''), 3000); return; }
+  setStatus('Findin’ ye…');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      userLocation = { lng: pos.coords.longitude, lat: pos.coords.latitude };
+      map.flyTo({ center: [userLocation.lng, userLocation.lat], zoom: 14 });
+      setStatus(''); if (points.length === 0) promptForStart();
+    },
+    (err) => { setStatus('Location: ' + err.message); setTimeout(() => setStatus(''), 4000); },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+  );
+}
 $('btn-locate').onclick = locateMe;
 
 // --- settings ---

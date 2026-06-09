@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0b2a3a" />
     <title>Canal Pal</title>
+    <script>
+      // Geolocation needs a secure context — bump http → https (except localhost).
+      if (location.protocol === 'http:' && !/^(localhost|127\.|192\.168\.|10\.)/.test(location.hostname))
+        location.replace(location.href.replace(/^http:/, 'https:'));
+    </script>
     <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="stylesheet" href="./src/style.css" />
@@ -12,9 +17,25 @@
   <body>
     <div id="map"></div>
 
-    <div id="loading">
-      <img src="./img/ship.gif" alt="" width="90" />
-      <p>Hoisting the sails…</p>
+    <div id="onboarding">
+      <div class="ob-card">
+        <img class="ob-hero" src="./img/treasure-map.gif" alt="" width="118" />
+        <h1>Canal Pal</h1>
+        <p class="ob-blurb">Ahoy, navigator! This be a full chart o' Britain's inland waterways —
+          every canal, lock an' waterin' hole — so ye may plot a course an' sail <b>offline</b>,
+          even in the back o' beyond where there be no signal.</p>
+        <p class="ob-warn">
+          <img src="./img/jolly-roger.gif" alt="" width="40" />
+          <span>First boardin' hauls aboard about <b id="ob-size">~46&nbsp;MB</b> o' charts to stow in yer hold.
+          On a slow line it may take a spell — but do it once an' ye sail free forever after.
+          Best done on wi-fi, lest ye plunder yer own data ration. ⚓</span>
+        </p>
+        <button id="ob-proceed" class="ob-btn">Hoist the sails — proceed ⛵</button>
+        <div id="ob-progress" class="hidden">
+          <div class="ob-bar"><div id="ob-bar-fill"></div></div>
+          <p id="ob-pct">Loadin' charts… 0%</p>
+        </div>
+      </div>
     </div>
 
     <header id="topbar">
