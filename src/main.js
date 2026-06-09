@@ -77,7 +77,9 @@ async function boot() {
   try {
     const blob = await getArchiveBlob((p) => setProgress(p));
     const { PMTiles, FileSource } = await import('pmtiles');
-    protocol.add(new PMTiles(new FileSource(new File([blob], 'canalplan.pmtiles'))));
+    // The File's name is the archive key — it MUST match the style source url
+    // 'pmtiles://canalplan' (see map.js), or the overlay won't resolve.
+    protocol.add(new PMTiles(new FileSource(new File([blob], 'canalplan'))));
   } catch (e) { console.error('chart load failed', e); }
   setProgress(100, "Charts aboard! Settin' sail…");
 
