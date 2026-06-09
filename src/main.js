@@ -1,4 +1,4 @@
-import { createMap, maplibregl, protocol, POI_LAYERS, setRoute, setRouteFacilities, setRouteLocks, fitRoute } from './map.js';
+import { createMap, maplibregl, protocol, POI_LAYERS, setRoute, setRouteFacilities, setRouteLocks, setStoppages, fitRoute } from './map.js';
 import { estimate, formatDuration, getSettings, saveSettings, correctionFactor, logTrip } from './time-model.js';
 import RouterWorker from './router.worker.js?worker';
 
@@ -235,7 +235,8 @@ function reset() {
   promptForStart();
 }
 function clearRouteOnly() {
-  setRoute(map, null); setRouteFacilities(map, null); setRouteLocks(map, null);
+  setRoute(map, null); setRouteFacilities(map, null); setRouteLocks(map, null); setStoppages(map, []);
+  $('route-stoppages').innerHTML = '';
   $('panel').classList.add('hidden');
   document.body.classList.remove('panel-open');
 }
@@ -243,6 +244,37 @@ function clearRouteOnly() {
 // nearest named place (for breadcrumb + drag relabelling)
 let gazetteer = [];
 fetch(BASE + 'data/places-named.json').then((r) => r.json()).then((d) => { gazetteer = d; });
+
+// CRT stoppages (refreshed daily by a GitHub Action into a same-origin file)
+let stoppages = [];
+fetch(BASE + 'data/stoppages.json').then((r) => r.json()).then((d) => { stoppages = d; }).catch(() => {});
+
+const R_EARTH = 6371000, toRad = (d) => (d * Math.PI) / 180;
+function metres(aLng, aLat, bLng, bLat) {
+  const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R_EARTH * Math.asin(Math.sqrt(h));
+}
+// Stoppages whose location lies within `bufferM` of the route polyline.
+function stoppagesOnRoute(coords, bufferM = 350) {
+  const hits = [];
+  for (const s of stoppages) {
+    let min = Infinity;
+    for (let i = 0; i < coords.length; i += 2) { // sample vertices (dense enough)
+      const d = metres(s.lng, s.lat, coords[i][0], coords[i][1]);
+      if (d < min) min = d;
+      if (min < bufferM) break;
+    }
+    if (min < bufferM) hits.push(s);
+  }
+  // soonest / active first
+  return hits.sort((a, b) => (a.start || '') .localeCompare(b.start || ''));
+}
+function ddmmyyyy(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${y}`;
+}
 function nameFor(lng, lat) {
   let best = null, bd = Infinity;
   for (const g of gazetteer) { const d = (g.lng - lng) ** 2 + (g.lat - lat) ** 2; if (d < bd) { bd = d; best = g; } }
@@ -287,6 +319,8 @@ function renderSummary(r) {
         `<b>Note:</b> ${names}${hasHave} disused or unnavigable - ${r.excludedMiles.toFixed(1)} mi of this route may not be passable by boat.`
       )}</span></div>`
     : '';
+
+  renderStoppages(r);
 
   $('route-summary').innerHTML = `
     <div class="stats">
@@ -345,6 +379,29 @@ function renderStartFacilities(facs) {
   setRouteFacilities(map, facs);
   showPanel();
 }
+
+// CRT stoppages along the route, with dates so you can judge relevance
+// (a June plan can ignore November works, but will still see them coming).
+function renderStoppages(r) {
+  const hits = stoppagesOnRoute(r.coords);
+  setStoppages(map, hits);
+  if (!hits.length) { $('route-stoppages').innerHTML = ''; return; }
+  const now = new Date().toISOString().slice(0, 10);
+  const closures = hits.filter((s) => s.closure).length;
+  const head = `${closures ? '⛔' : '⚠'} Stoppages on this route (${hits.length}${closures ? `, ${closures} closure${closures === 1 ? '' : 's'}` : ''})`;
+  const rows = hits.map((s) => {
+    const active = (s.start || '') <= now && (!s.end || s.end.slice(0, 10) >= now);
+    const when = active ? 'now' : (s.start ? 'from ' + ddmmyyyy(s.start) : '');
+    const cls = s.closure ? 'stp-closure' : 'stp-restrict';
+    return `<a class="stp ${cls}" href="${CANALPLAN_STP(s)}" target="_blank" rel="noopener">
+      <span class="stp-when">${active ? '🔴' : '🟠'} ${escapeHtml(when)}</span>
+      <span class="stp-body"><b>${escapeHtml(s.type)}</b> — ${escapeHtml(s.waterway || s.title || '')}${s.end && !active ? ` <span class="muted">to ${ddmmyyyy(s.end)}</span>` : ''}</span>
+    </a>`;
+  }).join('');
+  $('route-stoppages').innerHTML = `<div class="stp-head">${head}</div>${rows}`;
+}
+const CRT = 'https://canalrivertrust.org.uk';
+function CANALPLAN_STP(s) { return s.path ? (s.path.startsWith('http') ? s.path : CRT + s.path) : CRT + '/notices'; }
 
 function renderBreadcrumb() {
   $('route-breadcrumb').innerHTML = points.map((p) => {

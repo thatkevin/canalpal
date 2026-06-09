@@ -29,7 +29,7 @@
 :root[data-theme="gongoozler"] #brand-parrot,
 :root[data-theme="gongoozler"] .ob-hero,
 :root[data-theme="gongoozler"] .ob-warn img { display: none; }
-:root[data-theme="gongoozler"] #topbar strong { text-shadow: none; letter-spacing: 0; }
+:root[data-theme="gongoozler"] #topbar strong { color: #fff; text-shadow: none; letter-spacing: 0; }
 :root[data-theme="gongoozler"] .stat .lbl,
 :root[data-theme="gongoozler"] h3,
 :root[data-theme="gongoozler"] .r-type { letter-spacing: 0; }
@@ -170,6 +170,14 @@ button, input { font-family: var(--body); }
   background: #f6d9b0; border: 2px solid var(--red); border-radius: 6px; color: #6e2014; font-size: 1.05rem;
 }
 .warn b { color: var(--red); }
+
+/* stoppages */
+.stp-head { font-family: var(--pirata); font-size: 1.15rem; color: var(--red); margin: .2rem 0 .5rem; }
+.stp { display: flex; gap: .55rem; align-items: baseline; padding: .4rem .5rem; margin-bottom: .35rem; border: 2px solid var(--wood); border-left-width: 6px; border-radius: 6px; text-decoration: none; color: var(--ink); font-size: 1.05rem; background: var(--parch); }
+.stp-closure { border-left-color: #c0202a; }
+.stp-restrict { border-left-color: #e8920c; }
+.stp-when { flex: none; font-size: .9rem; white-space: nowrap; }
+.stp-body { flex: 1; }
 
 /* stats */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
