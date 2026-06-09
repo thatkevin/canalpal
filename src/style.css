@@ -1,0 +1,200 @@
+/* ---- bundled pirate fonts (offline) ---- */
+@font-face { font-family: 'Pirata One'; src: url('../fonts/pirata-one.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'IM Fell'; src: url('../fonts/im-fell.woff2') format('woff2'); font-display: swap; }
+
+:root {
+  --sea: #0b2a3a;
+  --sea2: #123c54;
+  --parch: #f3e6c4;
+  --parch2: #e7d2a3;
+  --rope: #c8a05a;
+  --wood: #5b3b1f;
+  --wood2: #7a5126;
+  --brass: #cf9f3a;
+  --ink: #3a2a16;
+  --red: #9e2b1c;
+  --teal: #1f6f7d;
+  --pirata: 'Pirata One', 'IM Fell', serif;
+  --body: 'IM Fell', Georgia, 'Times New Roman', serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; font-family: var(--body); color: var(--ink); background: var(--sea); }
+#map { position: absolute; inset: 0; }
+button, input { font-family: var(--body); }
+
+/* ---- loading ---- */
+#loading {
+  position: absolute; inset: 0; z-index: 50; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1rem;
+  background: radial-gradient(circle at 50% 40%, var(--sea2), var(--sea));
+  color: var(--parch); transition: opacity .5s; image-rendering: auto;
+}
+#loading.gone { opacity: 0; pointer-events: none; }
+#loading p { font-family: var(--pirata); font-size: 1.7rem; letter-spacing: 1px; text-shadow: 2px 2px 0 #000; margin: 0; }
+
+/* ---- top bar ---- */
+#topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+  display: flex; align-items: center; gap: .55rem;
+  padding: .35rem .7rem; padding-top: max(.35rem, env(safe-area-inset-top));
+  background: linear-gradient(180deg, rgba(11,42,58,.96), rgba(11,42,58,.55) 80%, transparent);
+  color: var(--parch); pointer-events: none;
+}
+#brand-parrot { filter: drop-shadow(1px 2px 1px rgba(0,0,0,.5)); }
+#topbar strong { font-family: var(--pirata); font-weight: 400; font-size: 1.55rem; color: var(--brass); letter-spacing: 1px; text-shadow: 2px 2px 0 #000, 0 0 1px #000; }
+.status { font-size: 1.05rem; line-height: 1; opacity: .95; margin-left: .2rem; }
+.status:empty { display: none; }
+
+/* ---- search ---- */
+#searchbar { position: absolute; top: 3.1rem; left: .7rem; right: 3.7rem; z-index: 6; }
+#search {
+  width: 100%; padding: .55rem .75rem; font-size: 1.2rem; color: var(--ink);
+  background: var(--parch); border: 3px solid var(--wood); border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--rope), 0 3px 8px rgba(0,0,0,.35); outline: none;
+}
+#search::placeholder { color: #9b8458; font-style: italic; }
+#search-results {
+  list-style: none; margin: .4rem 0 0; padding: 0; background: var(--parch);
+  border: 3px solid var(--wood); border-radius: 8px; box-shadow: 0 6px 16px rgba(0,0,0,.4);
+  max-height: 46vh; overflow-y: auto;
+}
+.rec-head { font-family: var(--pirata); font-size: .95rem; color: var(--wood2); padding: .3rem .7rem !important; background: var(--parch2); cursor: default; }
+.star { margin-left: auto; background: none; border: none; font-size: 1.35rem; line-height: 1; color: var(--rope); cursor: pointer; padding: 0 .1rem; }
+.star.on { color: #e0a400; }
+#search-results.hidden { display: none; }
+#search-results li {
+  display: flex; align-items: baseline; gap: .5rem; padding: .5rem .7rem;
+  border-bottom: 1px solid var(--parch2); cursor: pointer; font-size: 1.15rem;
+}
+#search-results li:last-child { border-bottom: none; }
+#search-results li:active, #search-results li:hover { background: var(--parch2); }
+.r-name { flex: 1; }
+.r-type { font-size: .85rem; color: var(--wood2); font-style: italic; }
+
+/* ---- hint scroll ---- */
+.hint {
+  position: absolute; left: 50%; transform: translateX(-50%); top: 6.7rem; z-index: 5;
+  background: var(--parch); color: var(--ink); padding: .4rem .9rem;
+  border: 2px solid var(--wood); border-radius: 20px; box-shadow: 0 3px 8px rgba(0,0,0,.35);
+  font-size: 1.15rem; max-width: 88vw; text-align: center;
+}
+.hint.hidden { display: none; }
+.hint a { color: var(--red); font-weight: bold; text-decoration: underline; cursor: pointer; }
+.err { color: var(--red); }
+
+/* ---- toolbar ---- */
+#toolbar { position: absolute; right: .7rem; top: 3.1rem; z-index: 7; display: flex; flex-direction: column; gap: .5rem; }
+.tool {
+  width: 46px; height: 46px; border: 3px solid var(--wood); border-radius: 10px;
+  background: radial-gradient(circle at 40% 35%, var(--parch), var(--parch2));
+  box-shadow: 0 3px 6px rgba(0,0,0,.35); cursor: pointer; padding: 0; color: var(--wood);
+  font-family: var(--pirata); font-size: 1rem; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.tool:active { transform: translateY(2px); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+#btn-locate, #btn-settings, #btn-undo { font-family: var(--body); font-size: 1.5rem; }
+
+/* ---- bottom panel (parchment) ---- */
+.panel {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
+  background: linear-gradient(180deg, var(--parch), var(--parch2));
+  border-top: 5px solid var(--wood);
+  box-shadow: 0 -4px 18px rgba(0,0,0,.4);
+  max-height: 66vh; overflow-y: auto;
+}
+.panel.hidden { display: none; }
+#panel-header {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  background: linear-gradient(180deg, var(--wood2), var(--wood)); color: var(--parch);
+  border: none; cursor: pointer; padding: .55rem 1rem; text-align: left;
+  font-family: var(--pirata); font-size: 1.3rem; letter-spacing: .5px;
+  position: sticky; top: 0; z-index: 2;
+}
+#panel-chevron { transition: transform .2s; }
+.panel.collapsed #panel-chevron { transform: rotate(180deg); }
+.panel.collapsed #panel-body { display: none; }
+#panel-body { padding: .8rem 1rem calc(1rem + env(safe-area-inset-bottom)); }
+
+/* breadcrumb */
+#route-breadcrumb { font-size: 1.2rem; line-height: 1.5; margin-bottom: .6rem; }
+#route-breadcrumb a { color: var(--teal); text-decoration: underline; }
+#route-breadcrumb .sep { color: var(--wood2); margin: 0 .25rem; }
+
+/* warning */
+.warn {
+  display: flex; gap: .5rem; align-items: flex-start; margin-bottom: .7rem; padding: .5rem .7rem;
+  background: #f6d9b0; border: 2px solid var(--red); border-radius: 6px; color: #6e2014; font-size: 1.05rem;
+}
+.warn b { color: var(--red); }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
+.stat { background: var(--parch); border: 2px solid var(--wood); border-radius: 8px; padding: .5rem .3rem; text-align: center; box-shadow: inset 0 0 0 1px var(--rope); }
+.stat .big { display: block; font-size: 1.5rem; line-height: 1.05; font-weight: bold; color: var(--sea); }
+.stat .big small { font-size: .8rem; opacity: .7; }
+.stat .lbl { display: block; margin-top: .15rem; font-family: var(--pirata); font-size: .85rem; color: var(--wood2); }
+
+.muted { color: var(--wood2); }
+.small { font-size: 1rem; }
+h3 { font-family: var(--pirata); font-weight: 400; margin: 1rem 0 .4rem; font-size: 1.2rem; color: var(--wood); }
+
+.fac { display: flex; align-items: center; gap: .55rem; padding: .4rem .2rem; border-bottom: 1px solid var(--parch2); font-size: 1.15rem; cursor: pointer; border-radius: 4px; }
+.fac:hover, .fac:active { background: var(--parch2); }
+.fac-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--teal); border: 2px solid var(--wood); flex: none; }
+.fac-name { flex: 1; }
+.fac-mi { color: var(--wood2); font-size: 1rem; }
+
+.primary {
+  display: block; width: 100%; margin-top: .9rem; padding: .65rem; cursor: pointer;
+  border: 3px solid var(--wood); border-radius: 8px; color: var(--parch);
+  background: linear-gradient(180deg, var(--teal), #145661); font-family: var(--pirata); font-size: 1.25rem; letter-spacing: .5px;
+}
+.primary:active { transform: translateY(2px); }
+
+/* ---- settings dialog ---- */
+dialog { border: 5px solid var(--wood); border-radius: 12px; padding: 1.1rem; max-width: 92vw; background: linear-gradient(180deg, var(--parch), var(--parch2)); color: var(--ink); }
+dialog h3 { margin-top: 0; }
+dialog label { display: block; margin: .7rem 0; font-size: 1.1rem; }
+dialog input { display: block; width: 100%; margin-top: .25rem; padding: .45rem; border: 2px solid var(--wood); border-radius: 6px; font-size: 1.2rem; background: var(--parch); }
+dialog menu { display: flex; justify-content: flex-end; gap: .5rem; padding: 0; margin: 1rem 0 0; }
+dialog menu button { padding: .45rem 1rem; border: 2px solid var(--wood); border-radius: 6px; background: var(--parch); font-family: var(--pirata); font-size: 1.05rem; cursor: pointer; }
+dialog menu button[value="save"] { background: var(--teal); color: var(--parch); }
+#calib-note { font-size: 1rem; }
+.credit { font-size: .95rem; color: var(--wood2); border-top: 1px dashed var(--wood); padding-top: .5rem; margin-top: .8rem; }
+.credit a { color: var(--teal); }
+
+/* ---- map markers (DOM, draggable) ----
+   Symmetric disc anchored at its centre, so the marker's centre is exactly the
+   position (no misleading 'tip'). A small crosshair dot marks the precise point. */
+.wp {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 3px solid #fff; box-shadow: 0 0 0 2px var(--wood), 0 2px 5px rgba(0,0,0,.45); cursor: grab;
+  display: flex; align-items: center; justify-content: center; position: relative;
+}
+.wp:active { cursor: grabbing; }
+.wp::after { content: ''; position: absolute; width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.9); }
+.wp span { font-size: .85rem; font-weight: bold; color: #fff; font-family: var(--body); text-shadow: 0 1px 1px rgba(0,0,0,.6); }
+.wp-start { background: #2f8f3e; }
+.wp-end { background: var(--red); }
+.wp-via { background: var(--brass); }
+.wp-via span { color: var(--ink); text-shadow: none; }
+
+/* ---- popups ---- */
+.maplibregl-popup-content {
+  background: var(--parch); border: 3px solid var(--wood); border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.45); padding: .55rem .7rem .6rem; font-family: var(--body); color: var(--ink);
+}
+.maplibregl-popup-tip { border-top-color: var(--wood) !important; border-bottom-color: var(--wood) !important; }
+.maplibregl-popup-close-button { font-size: 1.2rem; color: var(--wood); padding: 0 .3rem; }
+.poi-title { font-family: var(--pirata); font-size: 1.25rem; color: var(--sea); line-height: 1.1; }
+.poi-type { font-size: .95rem; color: var(--wood2); font-style: italic; }
+.poi-link { display: inline-block; margin-top: .35rem; color: var(--teal); text-decoration: underline; font-size: 1rem; }
+
+/* ---- maplibre controls ---- */
+/* lift bottom controls + attribution clear of the (closed) journey bar */
+.maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { transition: bottom .2s; }
+body.panel-open .maplibregl-ctrl-bottom-left, body.panel-open .maplibregl-ctrl-bottom-right { bottom: 58px; }
+.maplibregl-ctrl-group { border: 2px solid var(--wood) !important; border-radius: 8px !important; overflow: hidden; }
+.maplibregl-ctrl-attrib { font-family: var(--body); font-size: .95rem; background: rgba(243,230,196,.85) !important; }
+.maplibregl-ctrl-attrib a { color: var(--sea); }

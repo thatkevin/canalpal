@@ -1,0 +1,24 @@
+{
+  "name": "canal-pal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline-capable canal journey planner using CanalPlanAC mapping data",
+  "scripts": {
+    "preprocess": "node scripts/preprocess.mjs",
+    "tiles": "node scripts/convert-tiles.mjs",
+    "predev": "node scripts/ensure-assets.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.60.0",
+    "vite": "^6.0.0",
+    "vite-plugin-pwa": "^0.21.0"
+  },
+  "dependencies": {
+    "maplibre-gl": "^4.7.0",
+    "pmtiles": "^4.0.0"
+  }
+}

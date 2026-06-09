@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.bin/
+.pw/
+.env.local
+.envrc.local
+data/
+smoke.png
+map-*.png
+scripts/_*.mjs
+*.log
+.DS_Store
