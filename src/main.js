@@ -124,7 +124,21 @@ async function boot() {
     $('onboarding').classList.add('gone');
     setTimeout(() => $('onboarding')?.remove(), 600);
   }
-  askForLocation();
+  restoreView();
+}
+
+// On load: jump to wherever the user last set a start, and quietly learn the
+// current location for the "use current location" link (without recentering).
+function restoreView() {
+  try {
+    const ls = JSON.parse(localStorage.getItem('cp.laststart') || 'null');
+    if (ls && isFinite(ls.lng) && isFinite(ls.lat)) map.jumpTo({ center: [ls.lng, ls.lat], zoom: 13 });
+  } catch { /* ignore */ }
+  navigator.geolocation?.getCurrentPosition(
+    (pos) => { userLocation = { lng: pos.coords.longitude, lat: pos.coords.latitude }; if (points.length === 0) promptForStart(); },
+    () => { /* silent */ },
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+  );
 }
 
 function attachMapHandlers() {
@@ -138,10 +152,15 @@ function attachMapHandlers() {
   // map click: open a POI popup, else drop a waypoint
   map.on('click', (e) => {
     if (!ready) return;
+    // a stoppage marker → its own popup with a CRT link
+    const stp = map.queryRenderedFeatures(e.point, { layers: ['stoppages'] });
+    if (stp.length) { showStoppagePopup(lastStoppages.find((s) => s.id === stp[0].properties.id)); return; }
     const feats = map.queryRenderedFeatures(e.point, { layers: [...POI_LAYERS, 'routefac'] });
     if (feats.length) { showPoiPopup(e.lngLat, poiFromFeature(feats[0])); return; }
     addPoint({ lng: e.lngLat.lng, lat: e.lngLat.lat });
   });
+  map.on('mouseenter', 'stoppages', () => (map.getCanvas().style.cursor = 'pointer'));
+  map.on('mouseleave', 'stoppages', () => (map.getCanvas().style.cursor = ''));
   map.on('mouseenter', 'pl-jct', () => (map.getCanvas().style.cursor = 'pointer'));
   map.on('mouseleave', 'pl-jct', () => (map.getCanvas().style.cursor = ''));
 
@@ -184,6 +203,7 @@ async function addPoint(p) {
   Object.assign(p, nameFor(p.lng, p.lat));
   points.push(p);
   renderMarkers();
+  if (points.length === 1) { try { localStorage.setItem('cp.laststart', JSON.stringify({ lng: p.lng, lat: p.lat })); } catch { /* ignore */ } }
   if (points.length >= 2) computeRoute();
   else { setRoute(map, null); setRouteLocks(map, null); requestServices(); updateHint(); }
 }
@@ -382,26 +402,43 @@ function renderStartFacilities(facs) {
 
 // CRT stoppages along the route, with dates so you can judge relevance
 // (a June plan can ignore November works, but will still see them coming).
+let lastStoppages = [];
 function renderStoppages(r) {
   const hits = stoppagesOnRoute(r.coords);
+  lastStoppages = hits;
   setStoppages(map, hits);
   if (!hits.length) { $('route-stoppages').innerHTML = ''; return; }
   const now = new Date().toISOString().slice(0, 10);
   const closures = hits.filter((s) => s.closure).length;
   const head = `${closures ? '⛔' : '⚠'} Stoppages on this route (${hits.length}${closures ? `, ${closures} closure${closures === 1 ? '' : 's'}` : ''})`;
-  const rows = hits.map((s) => {
+  const rows = hits.map((s, i) => {
     const active = (s.start || '') <= now && (!s.end || s.end.slice(0, 10) >= now);
     const when = active ? 'now' : (s.start ? 'from ' + ddmmyyyy(s.start) : '');
     const cls = s.closure ? 'stp-closure' : 'stp-restrict';
-    return `<a class="stp ${cls}" href="${CANALPLAN_STP(s)}" target="_blank" rel="noopener">
+    return `<button type="button" class="stp ${cls}" data-i="${i}">
       <span class="stp-when">${active ? '🔴' : '🟠'} ${escapeHtml(when)}</span>
       <span class="stp-body"><b>${escapeHtml(s.type)}</b> — ${escapeHtml(s.waterway || s.title || '')}${s.end && !active ? ` <span class="muted">to ${ddmmyyyy(s.end)}</span>` : ''}</span>
-    </a>`;
+    </button>`;
   }).join('');
   $('route-stoppages').innerHTML = `<div class="stp-head">${head}</div>${rows}`;
+  $('route-stoppages').querySelectorAll('.stp').forEach((el) => { el.onclick = () => showStoppagePopup(hits[+el.dataset.i]); });
 }
 const CRT = 'https://canalrivertrust.org.uk';
-function CANALPLAN_STP(s) { return s.path ? (s.path.startsWith('http') ? s.path : CRT + s.path) : CRT + '/notices'; }
+function stoppageUrl(s) { return s.path ? (s.path.startsWith('http') ? s.path : CRT + s.path) : CRT + '/notices'; }
+
+// Fly to a stoppage and show a popup linking to the full CRT notice.
+function showStoppagePopup(s) {
+  if (!s) return;
+  setCollapsed(true);
+  map.flyTo({ center: [s.lng, s.lat], zoom: 14, offset: [0, -40] });
+  popup?.remove();
+  const dates = s.start ? `${ddmmyyyy(s.start)}${s.end ? ' – ' + ddmmyyyy(s.end) : ' onwards'}` : '';
+  const html = `<div class="poi-title">${escapeHtml(s.type)}</div>
+    <div class="poi-type">${escapeHtml(s.waterway || '')}${dates ? ' · ' + dates : ''}</div>
+    ${s.title ? `<div class="muted small">${escapeHtml(s.title)}</div>` : ''}
+    <a class="poi-link" href="${stoppageUrl(s)}" target="_blank" rel="noopener">More info on CRT ↗</a>`;
+  popup = new maplibregl.Popup({ offset: 14 }).setLngLat([s.lng, s.lat]).setHTML(html).addTo(map);
+}
 
 function renderBreadcrumb() {
   $('route-breadcrumb').innerHTML = points.map((p) => {

@@ -173,7 +173,8 @@ button, input { font-family: var(--body); }
 
 /* stoppages */
 .stp-head { font-family: var(--pirata); font-size: 1.15rem; color: var(--red); margin: .2rem 0 .5rem; }
-.stp { display: flex; gap: .55rem; align-items: baseline; padding: .4rem .5rem; margin-bottom: .35rem; border: 2px solid var(--wood); border-left-width: 6px; border-radius: 6px; text-decoration: none; color: var(--ink); font-size: 1.05rem; background: var(--parch); }
+.stp { display: flex; gap: .55rem; align-items: baseline; width: 100%; text-align: left; padding: .4rem .5rem; margin-bottom: .35rem; border: 2px solid var(--wood); border-left-width: 6px; border-radius: 6px; text-decoration: none; color: var(--ink); font-family: var(--body); font-size: 1.05rem; background: var(--parch); cursor: pointer; }
+.stp:active { transform: translateY(1px); }
 .stp-closure { border-left-color: #c0202a; }
 .stp-restrict { border-left-color: #e8920c; }
 .stp-when { flex: none; font-size: .9rem; white-space: nowrap; }
