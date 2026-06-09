@@ -120,6 +120,27 @@ function attachMapHandlers() {
   });
   map.on('mouseenter', 'pl-jct', () => (map.getCanvas().style.cursor = 'pointer'));
   map.on('mouseleave', 'pl-jct', () => (map.getCanvas().style.cursor = ''));
+
+  // hover a canal/river → highlight the whole waterway + show its name in #status
+  let hoveredWw = null;
+  for (const layer of ['ww', 'ww-unnav']) {
+    map.on('mousemove', layer, (e) => {
+      const f = e.features?.[0]; if (!f) return;
+      const id = f.properties.cp_id;
+      if (id !== hoveredWw) {
+        hoveredWw = id;
+        map.setFilter('ww-hl', ['==', ['get', 'cp_id'], id ?? ' ']);
+        setStatus(f.properties.cp_name || '');
+      }
+      map.getCanvas().style.cursor = 'pointer';
+    });
+    map.on('mouseleave', layer, () => {
+      hoveredWw = null;
+      map.setFilter('ww-hl', ['==', ['get', 'cp_id'], ' ']);
+      setStatus('');
+      map.getCanvas().style.cursor = '';
+    });
+  }
 }
 
 boot();
@@ -205,7 +226,7 @@ function renderSummary(r) {
   renderBreadcrumb();
 
   $('route-warning').innerHTML = r.excludedMiles > 0.02
-    ? `<div class="warn">☠ <span><b>Don't be a fool!</b> ${r.excludedNames.length ? r.excludedNames.slice(0, 2).map(escapeHtml).join(' & ') + ' ' : 'These waters '}${r.excludedNames.length === 1 ? 'has' : 'have'} been plundered an' can't be sailed — ${r.excludedMiles.toFixed(1)} mi o' yer course runs aground.</span></div>`
+    ? `<div class="warn">☠ <span><b>Don't be a fool!</b> ${r.excludedNames.length ? r.excludedNames.slice(0, 2).map(escapeHtml).join(' & ') + ' ' : 'These waters '}${r.excludedNames.length === 1 ? 'has' : 'have'} been plundered and can't be sailed - ${r.excludedMiles.toFixed(1)}mi of your course runs aground.</span></div>`
     : '';
 
   $('route-summary').innerHTML = `
