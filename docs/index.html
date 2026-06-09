@@ -12,25 +12,24 @@
     </script>
     <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <script type="module" crossorigin src="/canalpal/assets/index-CPQI_Hl5.js"></script>
-    <link rel="stylesheet" crossorigin href="/canalpal/assets/index-D7JDWF1j.css">
+    <script type="module" crossorigin src="/canalpal/assets/index-D3ciRBqS.js"></script>
+    <link rel="stylesheet" crossorigin href="/canalpal/assets/index-CEh2AiBV.css">
   <link rel="manifest" href="/canalpal/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/canalpal/registerSW.js"></script></head>
   <body>
     <div id="map"></div>
 
-    <div id="onboarding">
+    <div id="onboarding" class="init-hidden">
       <div class="ob-card">
-        <img class="ob-hero" src="./img/treasure-map.gif" alt="" width="118" />
+        <img class="ob-hero" src="./img/treasure-map.gif" alt="" width="118" height="118" />
         <h1>Canal Pal</h1>
-        <p class="ob-blurb">A complete chart of Britain's canals and rivers — every lock, junction
-          and water point — so you can plan a route and use it <b>offline</b>, even where there's no signal.</p>
+        <p class="ob-blurb">A complete chart of Britain's canals and rivers ⸻ every lock, junction
+          and water point ⸻ so you can plan a route and use it <b>offline</b>, even where there's no signal.</p>
         <p class="ob-warn">
-          <img src="./img/jolly-roger.gif" alt="" width="40" />
-          <span>First boardin' hauls aboard about <b id="ob-size">~46&nbsp;MB</b> o' charts to stow in yer hold.
-          On a slow line it may take a spell — but do it once an' ye sail free forever after.
-          Best done on wi-fi, lest ye plunder yer own data ration. ⚓</span>
+          <img src="./img/jolly-roger.gif" alt="" width="40" height="40" />
+          <span>First time aboard, we download about <b id="ob-size">~55&nbsp;MB</b> of charts so the app
+          works fully offline afterwards. It only happens once ⸻ best done on wi-fi. ⚓</span>
         </p>
-        <button id="ob-proceed" class="ob-btn">Hoist the sails — proceed ⛵</button>
+        <button id="ob-proceed" class="ob-btn">Man the tiller ⸻ proceed ⛵</button>
         <div id="ob-progress" class="hidden">
           <div class="ob-bar"><div id="ob-bar-fill"></div></div>
           <p id="ob-pct">Loadin' charts… 0%</p>
@@ -39,7 +38,7 @@
     </div>
 
     <header id="topbar">
-      <img id="brand-parrot" src="./img/parrot.gif" alt="" width="34" />
+      <img id="brand-parrot" src="./img/parrot.gif" alt="" width="34" height="43" />
       <strong>Canal Pal</strong>
       <span id="status" class="status"></span>
     </header>

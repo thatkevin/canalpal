@@ -63,25 +63,29 @@ async function getArchiveBlob(onProgress) {
 
 async function boot() {
   const cached = await archiveCached();
-  if (!cached) {
-    // first visit: wait for the user to consent to the download
+  if (cached) {
+    // returning visitor — charts already aboard, skip onboarding entirely
+    setStatus('Loading charts…');
+  } else {
+    // first visit — reveal the consent screen and wait for the user
+    $('onboarding').classList.remove('init-hidden');
     await new Promise((res) => { $('ob-proceed').onclick = res; });
+    $('ob-proceed').classList.add('hidden');
+    $('ob-progress').classList.remove('hidden');
+    setProgress(0, "Loadin' charts… 0%");
   }
-  $('ob-proceed').classList.add('hidden');
-  $('ob-progress').classList.remove('hidden');
-  setProgress(cached ? 60 : 0, cached ? "Hoistin' the sails…" : "Loadin' charts… 0%");
 
   // load the routing network in parallel with the chart download
   const initP = call('init', { base: BASE }).catch((e) => { console.error(e); return null; });
 
   try {
-    const blob = await getArchiveBlob((p) => setProgress(p));
+    const blob = await getArchiveBlob((p) => { if (!cached) setProgress(p); });
     const { PMTiles, FileSource } = await import('pmtiles');
     // The File's name is the archive key — it MUST match the style source url
     // 'pmtiles://canalplan' (see map.js), or the overlay won't resolve.
     protocol.add(new PMTiles(new FileSource(new File([blob], 'canalplan'))));
   } catch (e) { console.error('chart load failed', e); }
-  setProgress(100, "Charts aboard! Settin' sail…");
+  if (!cached) setProgress(100, "Charts aboard! Settin' sail…");
 
   map = createMap('map');
   window.__map = map;
@@ -89,10 +93,13 @@ async function boot() {
 
   const stats = await initP;
   ready = true;
-  if (stats) { setStatus(`${stats.nodes.toLocaleString()} points · ready`); setTimeout(() => setStatus(''), 2500); }
+  setStatus(stats ? `${stats.nodes.toLocaleString()} points · ready` : '');
+  setTimeout(() => setStatus(''), 2500);
 
-  $('onboarding').classList.add('gone');
-  setTimeout(() => $('onboarding')?.remove(), 600);
+  if (!cached) {
+    $('onboarding').classList.add('gone');
+    setTimeout(() => $('onboarding')?.remove(), 600);
+  }
   askForLocation();
 }
 

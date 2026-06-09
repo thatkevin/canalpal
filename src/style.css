@@ -30,6 +30,7 @@ button, input { font-family: var(--body); }
   transition: opacity .5s; overflow-y: auto;
 }
 #onboarding.gone { opacity: 0; pointer-events: none; }
+#onboarding.init-hidden { display: none; } /* hidden until we know data isn't cached */
 .ob-card {
   max-width: 440px; width: 100%; text-align: center; color: var(--ink);
   background: linear-gradient(180deg, var(--parch), var(--parch2));
