@@ -200,10 +200,10 @@ async function snapPoint(p) {
 async function addPoint(p) {
   if (!ready) return;
   await snapPoint(p);
-  Object.assign(p, nameFor(p.lng, p.lat));
+  if (p.name === undefined) Object.assign(p, nameFor(p.lng, p.lat)); // keep explicit names (search/last start)
   points.push(p);
   renderMarkers();
-  if (points.length === 1) { try { localStorage.setItem('cp.laststart', JSON.stringify({ lng: p.lng, lat: p.lat })); } catch { /* ignore */ } }
+  if (points.length === 1) saveLastStart(p);
   if (points.length >= 2) computeRoute();
   else { setRoute(map, null); setRouteLocks(map, null); requestServices(); updateHint(); }
 }
@@ -564,11 +564,20 @@ function updateHint() {
   else if (points.length === 1) setHint('Tap or search to set your <b>destination</b>.');
   else setHint('');
 }
+function saveLastStart(p) {
+  try { localStorage.setItem('cp.laststart', JSON.stringify({ lng: p.lng, lat: p.lat, name: p.name || null, id: p.id || '' })); } catch { /* ignore */ }
+}
+function getLastStart() {
+  try { return JSON.parse(localStorage.getItem('cp.laststart') || 'null'); } catch { return null; }
+}
 function promptForStart() {
-  let t = 'Tap or search to set your <b>start</b>';
-  if (userLocation) t += ' or <a href="#" id="use-loc">use current location</a>';
-  setHint(t + '.');
+  const last = getLastStart();
+  const opts = [];
+  if (userLocation) opts.push('<a href="#" id="use-loc">use current location</a>');
+  if (last && last.name) opts.push(`<a href="#" id="use-last">start at ${escapeHtml(last.name)}</a>`);
+  setHint('Tap or search to set your <b>start</b>' + (opts.length ? ' — ' + opts.join(' or ') : '') + '.');
   if (userLocation) $('use-loc').onclick = (ev) => { ev.preventDefault(); if (ready) addPoint({ ...userLocation, name: 'Current location', id: '' }); };
+  if (last && last.name && $('use-last')) $('use-last').onclick = (ev) => { ev.preventDefault(); if (ready) addPoint({ lng: last.lng, lat: last.lat, name: last.name, id: last.id || '' }); };
 }
 function showPanel() {
   $('panel').classList.remove('hidden');
