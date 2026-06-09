@@ -29,7 +29,15 @@ let points = [];        // [{lng,lat,name,id}]
 let markers = [];
 let lastRoute = null, summaryText = 'Journey', panelTitle = 'Journey', userLocation = null, ready = false, popup = null;
 
-const SERVICE_EMOJI = { 'Water point': '🚰', 'Fuel / diesel': '⛽', 'Elsan / chemical toilet': '🚽', 'Pump-out': '🚽', 'Sanitary station': '🚽', 'Rubbish disposal': '🗑️' };
+const FACILITY_EMOJI = {
+  'Pub': '🍺', 'Bar': '🍷', 'Restaurant': '🍽️', 'Takeaway': '🥡', 'Coffee shop': '☕',
+  'Water point': '🚰', 'Fuel / diesel': '⛽', 'Elsan / chemical toilet': '🚽', 'Pump-out': '🚽',
+  'Sanitary station': '🚽', 'Rubbish disposal': '🗑️', 'Recycling': '♻️',
+  'Shop': '🛒', 'Supermarket': '🛒', 'General store': '🛒', 'Store': '🛒', 'DIY / hardware': '🔧',
+  'Pharmacy': '💊', 'Laundry': '🧺', 'Toilets': '🚻', 'Mooring': '⚓', 'Visitor mooring': '⚓', 'Boatyard': '🛥️',
+};
+const emojiFor = (t) => FACILITY_EMOJI[t] || '📍';
+const SERVICE_EMOJI = FACILITY_EMOJI;
 const ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
 const arrowFor = (b) => ARROWS[Math.round((((b % 360) + 360) % 360) / 45) % 8];
 
@@ -256,7 +264,7 @@ function renderSummary(r) {
   const facs = r.facilities;
   if (facs.length) {
     $('route-facilities').innerHTML = `<h3>On the way (${facs.length})</h3>` +
-      facs.map((f, i) => `<div class="fac" data-fi="${i}"><span class="fac-dot"></span><span class="fac-name">${escapeHtml(f.title)}</span><span class="fac-mi">${f.miles.toFixed(1)} mi</span></div>`).join('');
+      facs.map((f, i) => `<div class="fac" data-fi="${i}"><span class="fac-emoji">${emojiFor(f.type)}</span><span class="fac-name">${escapeHtml(f.title)}</span><span class="fac-mi">${f.miles.toFixed(1)} mi</span></div>`).join('');
     $('route-facilities').querySelectorAll('.fac').forEach((el) => {
       const f = facs[+el.dataset.fi];
       el.onclick = () => {
@@ -290,7 +298,7 @@ function renderStartFacilities(facs) {
   $('route-summary').innerHTML = '<p class="muted small">Nearest boater services from here. Tap or search a destination to plan a journey.</p>';
   $('route-facilities').innerHTML = facs.length
     ? '<h3>Nearest services</h3>' + facs.map((f, i) =>
-        `<div class="fac" data-fi="${i}"><span class="fac-dot"></span><span class="fac-name">${SERVICE_EMOJI[f.type] || ''} ${escapeHtml(f.type)}</span><span class="fac-mi">${arrowFor(f.bearing)} ${f.miles.toFixed(1)} mi · ${f.locks} lk</span></div>`).join('')
+        `<div class="fac" data-fi="${i}"><span class="fac-emoji">${emojiFor(f.type)}</span><span class="fac-name">${escapeHtml(f.type)}</span><span class="fac-mi">${arrowFor(f.bearing)} ${f.miles.toFixed(1)} mi · ${f.locks} lk</span></div>`).join('')
     : '<p class="muted small">No mapped services within ~12 miles.</p>';
   $('route-facilities').querySelectorAll('.fac').forEach((el) => {
     const f = facs[+el.dataset.fi];
