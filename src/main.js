@@ -27,7 +27,11 @@ function call(type, payload) {
 let map = null;
 let points = [];        // [{lng,lat,name,id}]
 let markers = [];
-let lastRoute = null, summaryText = 'Journey', userLocation = null, ready = false, popup = null;
+let lastRoute = null, summaryText = 'Journey', panelTitle = 'Journey', userLocation = null, ready = false, popup = null;
+
+const SERVICE_EMOJI = { 'Water point': '🚰', 'Fuel / diesel': '⛽', 'Elsan / chemical toilet': '🚽', 'Pump-out': '🚽', 'Sanitary station': '🚽', 'Rubbish disposal': '🗑️' };
+const ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
+const arrowFor = (b) => ARROWS[Math.round((((b % 360) + 360) % 360) / 45) % 8];
 
 // --- boot: onboarding consent → one-time chart download → map + network ---
 const PM_URL = BASE + 'data/canalplan.pmtiles';
@@ -152,7 +156,15 @@ function addPoint(p) {
   points.push(p);
   renderMarkers();
   if (points.length >= 2) computeRoute();
-  else { clearRouteOnly(); updateHint(); }
+  else { setRoute(map, null); setRouteLocks(map, null); requestServices(); updateHint(); }
+}
+
+// With only a start set, show the nearest boater services from there.
+async function requestServices() {
+  try {
+    const facs = await call('services', { point: points[0] });
+    renderStartFacilities(facs);
+  } catch (e) { console.error(e); }
 }
 
 function renderMarkers() {
@@ -221,6 +233,7 @@ function renderSummary(r) {
   const est = estimate(r.miles, r.locks, s);
   const miles = Math.floor(r.miles);
   const fur = Math.round((r.miles - miles) * 8);
+  panelTitle = 'Journey';
   summaryText = `Journey: ${miles}mi ${fur}f, ${r.locks} lock${r.locks === 1 ? '' : 's'}, ${formatDuration(est.hours)}, ${est.days} day${est.days === 1 ? '' : 's'}`;
 
   renderBreadcrumb();
@@ -257,6 +270,33 @@ function renderSummary(r) {
   }
 
   $('btn-log').onclick = () => logTripFlow(r, est);
+  showPanel();
+}
+
+// Nearest boater services from the start point — shown in the collapsed bar with
+// emoji + a direction arrow + distance/locks, with a detailed list when expanded.
+function renderStartFacilities(facs) {
+  panelTitle = 'Nearest facilities';
+  const seen = new Set(); const bits = [];
+  for (const f of facs) {
+    const em = SERVICE_EMOJI[f.type] || '•';
+    if (seen.has(em)) continue; seen.add(em);
+    bits.push(`${em} ${arrowFor(f.bearing)} ${f.miles.toFixed(1)}mi`);
+  }
+  summaryText = bits.length ? 'Nearest  ' + bits.join('   ') : 'No facilities within ~12 mi';
+
+  $('route-breadcrumb').innerHTML = `<b>${escapeHtml(points[0].name || 'Start')}</b>`;
+  $('route-warning').innerHTML = '';
+  $('route-summary').innerHTML = '<p class="muted small">Nearest boater services from here. Tap or search a destination to plan a journey.</p>';
+  $('route-facilities').innerHTML = facs.length
+    ? '<h3>Nearest services</h3>' + facs.map((f, i) =>
+        `<div class="fac" data-fi="${i}"><span class="fac-dot"></span><span class="fac-name">${SERVICE_EMOJI[f.type] || ''} ${escapeHtml(f.type)}</span><span class="fac-mi">${arrowFor(f.bearing)} ${f.miles.toFixed(1)} mi · ${f.locks} lk</span></div>`).join('')
+    : '<p class="muted small">No mapped services within ~12 miles.</p>';
+  $('route-facilities').querySelectorAll('.fac').forEach((el) => {
+    const f = facs[+el.dataset.fi];
+    el.onclick = () => { setCollapsed(true); map.flyTo({ center: [f.lng, f.lat], zoom: 15, offset: [0, -40] }); showPoiPopup({ lng: f.lng, lat: f.lat }, { title: f.title, type: f.type }); };
+  });
+  setRouteFacilities(map, facs);
   showPanel();
 }
 
@@ -394,7 +434,7 @@ function showPanel() {
 function setCollapsed(c) {
   $('panel').classList.toggle('collapsed', c);
   $('panel-header').setAttribute('aria-expanded', String(!c));
-  $('route-title').innerHTML = c ? escapeHtml(summaryText) : 'Journey';
+  $('route-title').innerHTML = c ? escapeHtml(summaryText) : panelTitle;
 }
 $('panel-header').onclick = () => setCollapsed(!$('panel').classList.contains('collapsed'));
 function showError(t) { setHint(`<span class="err">${escapeHtml(t)}</span>`); }

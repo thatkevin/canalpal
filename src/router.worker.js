@@ -24,6 +24,9 @@ self.onmessage = async (e) => {
       if (!graph) throw new Error('graph not ready');
       const r = graph.routeThrough(payload.points);
       self.postMessage({ id, ok: true, result: r });
+    } else if (type === 'services') {
+      if (!graph) throw new Error('graph not ready');
+      self.postMessage({ id, ok: true, result: graph.nearestServices(payload.point) });
     }
   } catch (err) {
     self.postMessage({ id, ok: false, error: String(err && err.message || err) });

@@ -11,6 +11,9 @@
 // Locks are snapped to their nearest edge; a journey's lock count is the sum of
 // chamber counts on the traversed edges.
 
+// Boater service types for the "nearest facilities from here" search.
+const SERVICE_TYPES = new Set(['Water point', 'Fuel / diesel', 'Elsan / chemical toilet', 'Pump-out', 'Sanitary station', 'Rubbish disposal']);
+
 const QUANT = 1e5;            // 5 dp ≈ 1.1 m grid for vertex welding
 const WELD_M = 12;            // bridge near-miss junctions up to this distance
 const EARTH_R = 6371000;      // metres
@@ -25,6 +28,13 @@ export function haversine(aLng, aLat, bLng, bLat) {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
   return 2 * EARTH_R * Math.asin(Math.sqrt(h));
+}
+
+// Initial great-circle bearing from A to B, degrees clockwise from north.
+export function bearing(aLng, aLat, bLng, bLat) {
+  const y = Math.sin(rad(bLng - aLng)) * Math.cos(rad(bLat));
+  const x = Math.cos(rad(aLat)) * Math.sin(rad(bLat)) - Math.sin(rad(aLat)) * Math.cos(rad(bLat)) * Math.cos(rad(bLng - aLng));
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
 // Project point P onto segment AB; return {t, lng, lat, dist} (dist in metres).
@@ -201,10 +211,57 @@ export class CanalGraph {
 
   _indexFacilities(facilities) {
     this.facilities = facilities;
+    this.facByNode = new Map(); // nodeId -> [service facilities] for nearest-from-here
     for (let i = 0; i < facilities.length; i++) {
       const f = facilities[i];
       this._facGrid.insert(f.lng, f.lat, i);
+      if (SERVICE_TYPES.has(f.type)) {
+        const n = this._nearestNode(f.lng, f.lat);
+        if (n !== -1) { let a = this.facByNode.get(n); if (!a) this.facByNode.set(n, (a = [])); a.push(f); }
+      }
     }
+  }
+
+  _nearestNode(lng, lat, maxM = 120) {
+    let best = -1, bd = maxM;
+    for (const id of this._nodeGrid.near(lng, lat, 1)) {
+      const d = haversine(lng, lat, ...this.nodes[id]);
+      if (d < bd) { bd = d; best = id; }
+    }
+    return best;
+  }
+
+  // Nearest boater services (water, fuel, elsan, rubbish, pump-out) reachable
+  // along the network from a point, in any direction. One per type.
+  nearestServices(start, maxMiles = 12) {
+    const se = this._nearestEdge(start.lng, start.lat);
+    if (!se) return [];
+    const N = this.nodes.length;
+    const dist = new Float64Array(N).fill(Infinity);
+    const locksTo = new Int32Array(N);
+    const heap = new MinHeap();
+    dist[se.a] = haversine(se.lng, se.lat, ...this.nodes[se.a]); heap.push(se.a, dist[se.a]);
+    dist[se.b] = haversine(se.lng, se.lat, ...this.nodes[se.b]); heap.push(se.b, dist[se.b]);
+    const maxM = maxMiles * 1609.344;
+    const found = new Map();
+    let remaining = SERVICE_TYPES.size;
+    while (heap.size && remaining > 0) {
+      const { node, cost } = heap.pop();
+      if (cost > dist[node]) continue;
+      if (cost > maxM) break;
+      const facs = this.facByNode.get(node);
+      if (facs) for (const f of facs) {
+        if (!found.has(f.type)) {
+          found.set(f.type, { type: f.type, title: f.title, lng: f.lng, lat: f.lat, miles: cost / 1609.344, locks: locksTo[node], bearing: bearing(start.lng, start.lat, f.lng, f.lat) });
+          remaining--;
+        }
+      }
+      for (const e of this.adj[node]) {
+        const nd = cost + e.w;
+        if (nd < dist[e.to]) { dist[e.to] = nd; locksTo[e.to] = locksTo[node] + this.edges[e.edge].locks; heap.push(e.to, nd); }
+      }
+    }
+    return [...found.values()].sort((a, b) => a.miles - b.miles);
   }
 
   // ---- connectivity diagnostics (used by the validation script) ----
