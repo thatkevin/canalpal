@@ -64,7 +64,7 @@ for (const band of bands) {
 }
 console.log(`OSM pubs indexed: ${osmCount}`);
 
-function nearestName(lng, lat, maxM = 70) {
+function nearestName(lng, lat, maxM = 110) {
   const ix = Math.floor(lng / cell), iy = Math.floor(lat / cell);
   let best = null, bd = maxM;
   for (let x = ix - 1; x <= ix + 1; x++) for (let y = iy - 1; y <= iy + 1; y++) {
