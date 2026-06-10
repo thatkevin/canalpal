@@ -34,7 +34,7 @@ const FACILITY_EMOJI = {
   'Water point': '🚰', 'Fuel / diesel': '⛽', 'Elsan / chemical toilet': '🚽', 'Pump-out': '🚽',
   'Sanitary station': '🚽', 'Rubbish disposal': '🗑️', 'Recycling': '♻️',
   'Shop': '🛒', 'Supermarket': '🛒', 'General store': '🛒', 'Store': '🛒', 'DIY / hardware': '🔧',
-  'Pharmacy': '💊', 'Laundry': '🧺', 'Shower': '🚿', 'Toilets': '🚻', 'Mooring': '⚓', 'Visitor mooring': '⚓', 'Boatyard': '🛥️',
+  'Chemist': '💊', 'Laundry': '🧺', 'Shower': '🚿', 'Toilets': '🚻', 'Mooring': '⚓', 'Visitor mooring': '⚓', 'Boatyard': '🛥️',
 };
 const emojiFor = (t) => FACILITY_EMOJI[t] || '📍';
 const SERVICE_EMOJI = FACILITY_EMOJI;
@@ -453,7 +453,7 @@ const ICON_LABEL = {
   'cp-water': 'Water point', 'cp-elsan': 'Elsan', 'cp-pumpout': 'Pump-out', 'cp-sanstation': 'Sanitary station',
   'cp-rubbish': 'Rubbish', 'cp-recycling': 'Recycling', 'cp-fuel': 'Fuel', 'cp-boatyard': 'Boatyard',
   'cp-pub': 'Pub', 'cp-bar': 'Bar', 'cp-restaurant': 'Restaurant', 'cp-takeaway': 'Takeaway', 'cp-coffeeshop': 'Coffee shop',
-  'cp-shop': 'Shop', 'cp-supermarket': 'Supermarket', 'cp-genshop': 'Store', 'cp-miscshop': 'Shop', 'cp-diy': 'DIY / hardware', 'cp-pharmacy': 'Pharmacy', 'cp-laundry': 'Laundry',
+  'cp-shop': 'Shop', 'cp-supermarket': 'Supermarket', 'cp-genshop': 'Store', 'cp-miscshop': 'Shop', 'cp-diy': 'DIY / hardware', 'cp-pharmacy': 'Chemist', 'cp-laundry': 'Laundry',
   'cp-toilet': 'Toilets', 'cp-mooring': 'Mooring', 'cp-wmooring': 'Visitor mooring',
 };
 function poiFromFeature(f) {

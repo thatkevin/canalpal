@@ -59,7 +59,7 @@ const FACILITY_TYPES = {
   'cp-genshop': 'General store',
   'cp-miscshop': 'Shop',
   'cp-diy': 'DIY / hardware',
-  'cp-pharmacy': 'Pharmacy',
+  'cp-pharmacy': 'Chemist',
   'cp-laundry': 'Laundry',
   'cp-toilet': 'Toilets',
   'cp-mooring': 'Mooring',
