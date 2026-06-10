@@ -622,6 +622,7 @@ async function computeRoute() {
 // when we already have the route, e.g. confirming a previewed stop).
 function applyRoute(r, fit) {
   lastRoute = r;
+  setHint(''); // a journey's set now — clear the "tap to set destination" prompt
   setRoute(map, r.coords); setRouteFacilities(map, r.facilities); setRouteLocks(map, r.routeLocks);
   if (fit) fitRoute(map, r.coords);
   renderSummary(r);
