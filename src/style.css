@@ -172,7 +172,9 @@ button, input { font-family: var(--body); }
 .warn b { color: var(--red); }
 
 /* stoppages */
-.stp-head { font-family: var(--pirata); font-size: 1.15rem; color: var(--red); margin: .2rem 0 .5rem; }
+.stp-head { display: flex; align-items: center; gap: .5rem; width: 100%; text-align: left; background: none; border: none; padding: .1rem 0; margin: .2rem 0 .5rem; font-family: var(--pirata); font-size: 1.15rem; color: var(--red); cursor: pointer; }
+.stp-show { margin-left: auto; flex: none; font-family: var(--body); font-size: .85rem; color: var(--parch); background: var(--red); border: 2px solid var(--wood); border-radius: 6px; padding: .1rem .55rem; }
+.stp-hidden { display: none; }
 .stp { display: flex; gap: .55rem; align-items: baseline; width: 100%; text-align: left; padding: .4rem .5rem; margin-bottom: .35rem; border: 2px solid var(--wood); border-left-width: 6px; border-radius: 6px; text-decoration: none; color: var(--ink); font-family: var(--body); font-size: 1.05rem; background: var(--parch); cursor: pointer; }
 .stp:active { transform: translateY(1px); }
 .stp-closure { border-left-color: #c0202a; }
@@ -245,6 +247,26 @@ dialog menu button[value="save"] { background: var(--teal); color: var(--parch);
 .poi-link { display: inline-block; margin-top: .35rem; color: var(--teal); text-decoration: underline; font-size: 1rem; }
 .poi-route { display: inline-block; margin-top: .45rem; margin-right: .6rem; padding: .25rem .6rem; background: var(--teal); color: var(--parch); border: 2px solid var(--wood); border-radius: 6px; font-size: 1rem; text-decoration: none; cursor: pointer; }
 .poi-route:active { transform: translateY(1px); }
+.poi-nav { display: flex; align-items: center; justify-content: space-between; gap: .4rem; margin-bottom: .4rem; }
+.nav-btn { flex: none; width: 1.9rem; height: 1.9rem; font-size: 1.3rem; line-height: 1; color: var(--parch); background: var(--teal); border: 2px solid var(--wood); border-radius: 6px; cursor: pointer; }
+.nav-btn:active { transform: translateY(1px); }
+.nav-count { flex: 1; text-align: center; font-size: .95rem; color: var(--wood2); }
+
+/* ---- map key / legend (bottom-right) ---- */
+.legend { position: absolute; right: .7rem; bottom: 1.6rem; z-index: 6; width: 12.5rem; max-width: 60vw;
+  background: var(--parch); border: 3px solid var(--wood); border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,.4); overflow: hidden; }
+#legend-head { width: 100%; text-align: left; background: var(--wood); color: var(--parch); border: none;
+  font-family: var(--pirata); font-size: 1.1rem; letter-spacing: .02em; padding: .35rem .6rem; cursor: pointer; }
+#legend-head::after { content: '▾'; float: right; }
+.legend.legend-closed #legend-head::after { content: '▸'; }
+.legend.legend-closed #legend-body { display: none; }
+#legend-body { padding: .3rem; }
+.leg-row { display: flex; align-items: center; gap: .5rem; width: 100%; text-align: left; background: none;
+  border: none; border-radius: 6px; padding: .3rem .35rem; font-size: 1rem; color: var(--ink); cursor: pointer; }
+.leg-row[data-cat]:hover { background: var(--parch2); }
+.leg-emoji { flex: none; width: 1.5rem; text-align: center; font-size: 1.1rem; line-height: 1; }
+.leg-label { flex: 1; }
+.leg-off { color: var(--wood2); opacity: .55; }
 
 /* ---- maplibre controls ---- */
 /* lift bottom controls + attribution clear of the (closed) journey bar */

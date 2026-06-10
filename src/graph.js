@@ -199,6 +199,7 @@ export class CanalGraph {
   }
 
   _snapLocks(locks) {
+    this.lockData = locks; // kept for flight grouping (lockGroups)
     for (const lk of locks) {
       const e = this._nearestEdge(lk.lng, lk.lat);
       if (e && e.dist < 60) {
@@ -271,6 +272,63 @@ export class CanalGraph {
       }
     }
     return [...found.values()].sort((a, b) => a.miles - b.miles);
+  }
+
+  // Group locks into flights: runs of locks in a row on the same stretch of canal,
+  // not crossing a junction (a node with >2 ways) and within maxGapM along the
+  // water. So Caen Hill's 16 chain into one marker, but locks either side of a
+  // junction stay separate. Returns one marker per flight:
+  // { lng, lat, rot, count, chambers, title }.
+  lockGroups(maxGapM = 400) {
+    const locks = this.lockData || [];
+    const N = locks.length;
+    if (!N) return [];
+    const Nn = this.nodes.length;
+    const node = new Int32Array(N).fill(-1);   // each lock's nearest graph node
+    const nodeLocks = new Map();               // nodeId -> [lockIdx]
+    for (let i = 0; i < N; i++) {
+      const n = this._nearestNode(locks[i].lng, locks[i].lat, 120);
+      node[i] = n;
+      if (n >= 0) { let a = nodeLocks.get(n); if (!a) nodeLocks.set(n, (a = [])); a.push(i); }
+    }
+    // union-find: chain locks reachable within maxGapM without crossing a junction
+    const parent = new Int32Array(N); for (let i = 0; i < N; i++) parent[i] = i;
+    const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[a] = b; };
+    const dist = new Float64Array(Nn);
+    const stamp = new Int32Array(Nn).fill(-1); // avoids an O(N) reset per lock
+    let token = 0;
+    for (let i = 0; i < N; i++) {
+      const s = node[i]; if (s < 0) continue;
+      token++;
+      dist[s] = 0; stamp[s] = token;
+      const heap = new MinHeap(); heap.push(s, 0);
+      while (heap.size) {
+        const { node: u, cost } = heap.pop();
+        if (stamp[u] === token && cost > dist[u]) continue;
+        const here = nodeLocks.get(u);
+        if (here) for (const j of here) if (j !== i) union(i, j);
+        if (u !== s && this.adj[u].length > 2) continue; // stop at a junction
+        for (const e of this.adj[u]) {
+          const nd = cost + e.w;
+          if (nd <= maxGapM && (stamp[e.to] !== token || nd < dist[e.to])) { dist[e.to] = nd; stamp[e.to] = token; heap.push(e.to, nd); }
+        }
+      }
+    }
+    const groups = new Map();
+    for (let i = 0; i < N; i++) { const r = find(i); let g = groups.get(r); if (!g) groups.set(r, (g = [])); g.push(i); }
+    const out = [];
+    for (const idxs of groups.values()) {
+      let lng = 0, lat = 0, chambers = 0;
+      for (const j of idxs) { lng += locks[j].lng; lat += locks[j].lat; chambers += locks[j].chambers || 1; }
+      lng /= idxs.length; lat /= idxs.length;
+      // anchor the marker on the flight's most central lock (so it sits on water)
+      let best = idxs[0], bd = Infinity;
+      for (const j of idxs) { const d = (locks[j].lng - lng) ** 2 + (locks[j].lat - lat) ** 2; if (d < bd) { bd = d; best = j; } }
+      const rep = locks[best];
+      out.push({ lng: rep.lng, lat: rep.lat, rot: (rep.rot || 0) + (rep.flip ? 180 : 0), count: idxs.length, chambers, title: rep.title });
+    }
+    return out;
   }
 
   // ---- connectivity diagnostics (used by the validation script) ----

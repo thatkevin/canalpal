@@ -1,4 +1,4 @@
-import { createMap, maplibregl, protocol, POI_LAYERS, setRoute, setRouteFacilities, setRouteLocks, setStoppages, fitRoute } from './map.js';
+import { createMap, maplibregl, protocol, POI_LAYERS, POI_CATS, setRoute, setRouteFacilities, setRouteLocks, setStoppages, setLocks, setLocksAll, setLayerVisible, fitRoute } from './map.js';
 import { estimate, formatDuration, getSettings, saveSettings, correctionFactor, logTrip } from './time-model.js';
 import RouterWorker from './router.worker.js?worker';
 
@@ -117,6 +117,7 @@ async function boot() {
 
   const stats = await initP;
   ready = true;
+  loadLockGroups(); // network's built — group locks into flights and show them
   setStatus(stats ? `${stats.nodes.toLocaleString()} points · ready` : '');
   setTimeout(() => setStatus(''), 2500);
 
@@ -149,14 +150,34 @@ function attachMapHandlers() {
   map._geolocate?.on('error', (e) => { setStatus('Location: ' + (e?.message || 'unavailable')); setTimeout(() => setStatus(''), 4000); });
   map.on('error', () => {});
 
+  // feed the locks once both the style and the grouped data are ready
+  map.on('load', () => { if (lockGroupsData.length) applyLocks(); applyLayerPrefs(); });
+
   // map click: open a POI popup, else drop a waypoint
   map.on('click', (e) => {
     if (!ready) return;
+    // a lock flight (zoomed out) or an individual lock (zoomed in) → info popup
+    const lp = map.queryRenderedFeatures(e.point, { layers: ['lock-flight', 'lock-point'] });
+    if (lp.length) {
+      const p = lp[0].properties;
+      const type = p.count > 1 ? `Lock flight · ${p.count} locks` : 'Lock';
+      showPoiPopup(e.lngLat, { title: p.title || 'Lock', type });
+      return;
+    }
     // a stoppage marker → its own popup with a CRT link
     const stp = map.queryRenderedFeatures(e.point, { layers: ['stoppages'] });
-    if (stp.length) { showStoppagePopup(lastStoppages.find((s) => s.id === stp[0].properties.id)); return; }
+    if (stp.length) { const i = lastStoppages.findIndex((s) => s.id === stp[0].properties.id); if (i >= 0) showStoppageAt(i); return; }
     const feats = map.queryRenderedFeatures(e.point, { layers: [...POI_LAYERS, 'routefac'] });
-    if (feats.length) { showPoiPopup(e.lngLat, poiFromFeature(feats[0])); return; }
+    if (feats.length) {
+      const f = feats[0];
+      // a facility that's on the chosen route → step-through popup; other POIs → plain
+      if (f.layer.id === 'routefac' && lastRoute?.facilities) {
+        const [lng, lat] = f.geometry.coordinates;
+        const i = lastRoute.facilities.findIndex((x) => Math.abs(x.lng - lng) < 1e-6 && Math.abs(x.lat - lat) < 1e-6);
+        if (i >= 0) { showFacAt(i); return; }
+      }
+      showPoiPopup(e.lngLat, poiFromFeature(f)); return;
+    }
     addPoint({ lng: e.lngLat.lng, lat: e.lngLat.lat });
   });
   map.on('mouseenter', 'stoppages', () => (map.getCanvas().style.cursor = 'pointer'));
@@ -256,7 +277,7 @@ function reset() {
 }
 function clearRouteOnly() {
   setRoute(map, null); setRouteFacilities(map, null); setRouteLocks(map, null); setStoppages(map, []);
-  $('route-stoppages').innerHTML = '';
+  $('route-stoppages').innerHTML = ''; $('route-log').innerHTML = '';
   $('panel').classList.add('hidden');
   document.body.classList.remove('panel-open');
 }
@@ -264,6 +285,48 @@ function clearRouteOnly() {
 // nearest named place (for breadcrumb + drag relabelling)
 let gazetteer = [];
 fetch(BASE + 'data/places-named.json').then((r) => r.json()).then((d) => { gazetteer = d; });
+
+// locks — always on. Zoomed out: flights grouped by the routing graph
+// (graph.lockGroups). Zoomed in: every individual lock. Loaded once the worker's
+// network is ready (see boot), then fed to the map.
+let lockGroupsData = [], lockAllData = [];
+function applyLocks() {
+  if (!map) return;
+  const feed = () => { setLocks(map, lockGroupsData); setLocksAll(map, lockAllData); };
+  if (map.isStyleLoaded()) feed(); else map.once('load', feed);
+}
+function loadLockGroups() {
+  call('lockgroups').then((r) => {
+    lockGroupsData = r?.groups || []; lockAllData = r?.all || [];
+    applyLocks();
+  }).catch((e) => console.error(e));
+}
+
+// --- legend: toggle POI categories on/off (locks are pinned on) ---
+const LAYER_KEY = 'cp.layers';
+const getLayerPrefs = () => { try { return JSON.parse(localStorage.getItem(LAYER_KEY) || '{}'); } catch { return {}; } };
+function buildLegend() {
+  $('legend-body').innerHTML = POI_CATS.map((c) => `<button type="button" class="leg-row" data-cat="${c.id}"><span class="leg-emoji">${c.emoji}</span><span class="leg-label">${escapeHtml(c.label)}</span></button>`).join('');
+  $('legend-body').querySelectorAll('.leg-row[data-cat]').forEach((el) => { el.onclick = () => toggleCat(el.dataset.cat); });
+  $('legend-head').onclick = () => $('legend').classList.toggle('legend-closed');
+  applyLayerPrefs();
+}
+function toggleCat(id) {
+  const prefs = getLayerPrefs();
+  prefs[id] = prefs[id] === false; // flip (default on)
+  localStorage.setItem(LAYER_KEY, JSON.stringify(prefs));
+  applyLayerPrefs();
+}
+function applyLayerPrefs() {
+  const prefs = getLayerPrefs();
+  for (const c of POI_CATS) {
+    const on = prefs[c.id] !== false;
+    if (map) setLayerVisible(map, 'cat-' + c.id, on);
+    const el = document.querySelector(`.leg-row[data-cat="${c.id}"]`);
+    if (el) el.classList.toggle('leg-off', !on);
+  }
+}
+buildLegend();
 
 // CRT stoppages (refreshed daily by a GitHub Action into a same-origin file)
 let stoppages = [];
@@ -350,7 +413,6 @@ function renderSummary(r) {
       <div class="stat"><span class="big">${est.days}</span><span class="lbl">day${est.days === 1 ? '' : 's'}*</span></div>
     </div>
     <p class="muted small">*at ${s.hoursPerDay} hrs/day, ${s.speedMph} mph, ${s.lockMinutes} min/lock${est.samples >= 2 ? ` · ×${est.factor.toFixed(2)} from ${est.samples} logged trips` : ''}. Tap the water to add a stop, or drag a pin.</p>
-    <button id="btn-log" class="primary">${t('Log this as a completed voyage…', 'Log this as a completed trip…')}</button>
   `;
 
   const facs = r.facilities;
@@ -358,17 +420,14 @@ function renderSummary(r) {
     $('route-facilities').innerHTML = `<h3>On the way (${facs.length})</h3>` +
       facs.map((f, i) => `<div class="fac" data-fi="${i}"><span class="fac-emoji">${emojiFor(f.type)}</span><span class="fac-name">${escapeHtml(f.title)}</span><span class="fac-mi">${f.miles.toFixed(1)} mi</span></div>`).join('');
     $('route-facilities').querySelectorAll('.fac').forEach((el) => {
-      const f = facs[+el.dataset.fi];
-      el.onclick = () => {
-        setCollapsed(true); // get the panel out of the way so the POI is visible
-        map.flyTo({ center: [f.lng, f.lat], zoom: 15, offset: [0, -40] });
-        showPoiPopup({ lng: f.lng, lat: f.lat }, { title: f.title, type: f.type });
-      };
+      el.onclick = () => showFacAt(+el.dataset.fi);
     });
   } else {
     $('route-facilities').innerHTML = '<p class="muted small">No mapped facilities directly on this route.</p>';
   }
 
+  // Log button lives at the very bottom of the panel, below "On the way".
+  $('route-log').innerHTML = `<button id="btn-log" class="primary">${t('Log this as a completed voyage…', 'Log this as a completed trip…')}</button>`;
   $('btn-log').onclick = () => logTripFlow(r, est);
   showPanel();
 }
@@ -388,6 +447,7 @@ function renderStartFacilities(facs) {
 
   $('route-breadcrumb').innerHTML = `<b>${escapeHtml(points[0].name || 'Start')}</b>`;
   $('route-warning').innerHTML = '';
+  $('route-log').innerHTML = ''; // no completed-voyage button in services-only mode
   $('route-summary').innerHTML = '<p class="muted small">Nearest boater services from here. Tap or search a destination to plan a journey.</p>';
   $('route-facilities').innerHTML = facs.length
     ? '<h3>Nearest services</h3>' + facs.map((f, i) =>
@@ -421,24 +481,33 @@ function renderStoppages(r) {
       <span class="stp-body"><b>${escapeHtml(s.type)}</b> — ${escapeHtml(s.waterway || s.title || '')}${s.end && !active ? ` <span class="muted">to ${ddmmyyyy(s.end)}</span>` : ''}</span>
     </button>`;
   }).join('');
-  $('route-stoppages').innerHTML = `<div class="stp-head">${head}</div>${rows}`;
-  $('route-stoppages').querySelectorAll('.stp').forEach((el) => { el.onclick = () => showStoppagePopup(hits[+el.dataset.i]); });
+  // Hidden by default — a tap on the header reveals the list, so the panel isn't
+  // dominated by stoppages you may not care about for this trip.
+  $('route-stoppages').innerHTML = `<button type="button" class="stp-head" id="stp-toggle" aria-expanded="false">${head}<span class="stp-show">Show</span></button><div id="stp-list" class="stp-hidden">${rows}</div>`;
+  const list = $('stp-list');
+  $('stp-toggle').onclick = () => {
+    const hidden = list.classList.toggle('stp-hidden');
+    $('stp-toggle').setAttribute('aria-expanded', String(!hidden));
+    $('stp-toggle').querySelector('.stp-show').textContent = hidden ? 'Show' : 'Hide';
+  };
+  list.querySelectorAll('.stp').forEach((el) => { el.onclick = () => showStoppageAt(+el.dataset.i); });
 }
 const CRT = 'https://canalrivertrust.org.uk';
 function stoppageUrl(s) { return s.path ? (s.path.startsWith('http') ? s.path : CRT + s.path) : CRT + '/notices'; }
 
 // Fly to a stoppage and show a popup linking to the full CRT notice.
-function showStoppagePopup(s) {
+function showStoppagePopup(s, nav) {
   if (!s) return;
   setCollapsed(true);
   map.flyTo({ center: [s.lng, s.lat], zoom: 14, offset: [0, -40] });
   popup?.remove();
   const dates = s.start ? `${ddmmyyyy(s.start)}${s.end ? ' – ' + ddmmyyyy(s.end) : ' onwards'}` : '';
-  const html = `<div class="poi-title">${escapeHtml(s.type)}</div>
+  const html = navRow(nav) + `<div class="poi-title">${escapeHtml(s.type)}</div>
     <div class="poi-type">${escapeHtml(s.waterway || '')}${dates ? ' · ' + dates : ''}</div>
     ${s.title ? `<div class="muted small">${escapeHtml(s.title)}</div>` : ''}
     <a class="poi-link" href="${stoppageUrl(s)}" target="_blank" rel="noopener">More info on CRT ↗</a>`;
   popup = new maplibregl.Popup({ offset: 14 }).setLngLat([s.lng, s.lat]).setHTML(html).addTo(map);
+  wireNav(nav, showStoppageAt);
 }
 
 function renderBreadcrumb() {
@@ -462,16 +531,45 @@ function poiFromFeature(f) {
   if (!type) type = p.layer === 'locks' ? 'Lock' : p.layer === 'junctions' ? 'Junction' : (p.layer === 'bigplaces' || p.layer === 'smallplaces') ? 'Place' : ICON_LABEL[p.icon] || 'Point of interest';
   return { title: p.title || type, type, id: p.cp_id };
 }
-function showPoiPopup(lngLat, { title, type, id }) {
+function showPoiPopup(lngLat, { title, type, id }, nav) {
   popup?.remove();
-  let html = `<div class="poi-title">${escapeHtml(title || '')}</div>`;
+  let html = navRow(nav) + `<div class="poi-title">${escapeHtml(title || '')}</div>`;
   if (type) html += `<div class="poi-type">${escapeHtml(type)}</div>`;
   // offer to add this place to the journey once a start is set
   if (points.length >= 1) html += `<a class="poi-route" href="#">🧭 Route to here</a>`;
   if (id) html += `<a class="poi-link" href="${CANALPLAN}${id}" target="_blank" rel="noopener">View on CanalPlanAC ↗</a>`;
   popup = new maplibregl.Popup({ offset: 14 }).setLngLat(lngLat).setHTML(html).addTo(map);
+  wireNav(nav, showFacAt);
   const link = popup.getElement()?.querySelector('.poi-route');
   if (link) link.onclick = (e) => { e.preventDefault(); popup?.remove(); addPoint({ lng: lngLat.lng, lat: lngLat.lat, name: title || type, id: id || '' }); };
+}
+
+// --- popup prev/next: step through the route's facilities or stoppages ---
+// nav = { index, total }; renders ‹ n / N › and wraps at the ends.
+function navRow(nav) {
+  if (!nav || nav.total < 2) return '';
+  return `<div class="poi-nav"><button type="button" class="nav-btn nav-prev" aria-label="Previous">‹</button><span class="nav-count">${nav.index + 1} / ${nav.total}</span><button type="button" class="nav-btn nav-next" aria-label="Next">›</button></div>`;
+}
+function wireNav(nav, goTo) {
+  if (!nav || nav.total < 2) return;
+  const el = popup?.getElement();
+  el?.querySelector('.nav-prev')?.addEventListener('click', (e) => { e.preventDefault(); goTo(nav.index - 1); });
+  el?.querySelector('.nav-next')?.addEventListener('click', (e) => { e.preventDefault(); goTo(nav.index + 1); });
+}
+function showFacAt(i) {
+  const facs = lastRoute?.facilities || [];
+  if (!facs.length) return;
+  const n = facs.length; i = ((i % n) + n) % n;
+  const f = facs[i];
+  setCollapsed(true); // get the panel out of the way so the POI is visible
+  map.flyTo({ center: [f.lng, f.lat], zoom: 15, offset: [0, -40] });
+  showPoiPopup({ lng: f.lng, lat: f.lat }, { title: f.title, type: f.type }, { index: i, total: n });
+}
+function showStoppageAt(i) {
+  const list = lastStoppages || [];
+  if (!list.length) return;
+  const n = list.length; i = ((i % n) + n) % n;
+  showStoppagePopup(list[i], { index: i, total: n });
 }
 
 // --- trip logging (learned weighting) ---
