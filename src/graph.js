@@ -479,6 +479,7 @@ export class CanalGraph {
     const milesByType = {};
     const routeLocks = [];
     const excludedNames = new Set();
+    const legMiles = [], legLocks = []; // per-leg, so the UI can place via stops
     for (let i = 0; i < points.length - 1; i++) {
       const leg = this.route(points[i], points[i + 1]);
       if (!leg || leg.error) return { error: 'no-route', legIndex: i };
@@ -486,6 +487,7 @@ export class CanalGraph {
       const segCoords = i > 0 ? leg.coords.slice(1) : leg.coords;
       coords = coords.concat(segCoords);
       locks += leg.locks;
+      legMiles.push(leg.miles); legLocks.push(leg.locks);
       excludedMiles += leg.excludedMiles;
       for (const n of leg.excludedNames) excludedNames.add(n);
       routeLocks.push(...leg.routeLocks);
@@ -497,7 +499,7 @@ export class CanalGraph {
     return {
       coords, miles, furlongs: miles * 8, locks, milesByType, routeLocks,
       excludedMiles, excludedNames: [...excludedNames],
-      legs: points.length - 1,
+      legs: points.length - 1, legMiles, legLocks,
       bendFactor: this.bendFactor(coords),
       facilities: this.facilitiesAlong(coords, 70),
     };

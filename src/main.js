@@ -476,12 +476,29 @@ function renderSummary(r) {
     <p class="muted small">*at ${s.hoursPerDay} hrs/day, ${s.speedMph} mph, ${s.lockMinutes} min/lock${est.samples >= 2 ? ` · ×${est.factor.toFixed(2)} from ${est.samples} logged trips` : ''}. Tap the water to add a stop, or drag a pin.</p>
   `;
 
+  // "On the way": the journey's own via stops interleaved with facilities, in
+  // order along the route, each with distance + ETA at the journey's average pace.
   const facs = r.facilities;
-  if (facs.length) {
-    $('route-facilities').innerHTML = `<h3>On the way (${facs.length})</h3>` +
-      facs.map((f, i) => `<div class="fac" data-fi="${i}"><span class="fac-emoji">${emojiFor(f.type)}</span><span class="fac-name">${escapeHtml(f.title)}</span><span class="fac-mi">${f.miles.toFixed(1)} mi</span></div>`).join('');
+  const pace = r.miles > 0 ? est.hours / r.miles : 0; // hours per mile (incl. locks)
+  const etaStr = (m) => formatDuration(m * pace);
+  const stops = [];
+  if (r.legMiles) {
+    let cum = 0;
+    for (let i = 0; i < r.legMiles.length; i++) {
+      cum += r.legMiles[i];
+      const via = i + 1; // points index reached after this leg
+      if (via < points.length - 1) stops.push({ stop: true, miles: cum, num: via + 1, name: points[via].name || `Stop ${via + 1}`, lng: points[via].lng, lat: points[via].lat });
+    }
+  }
+  const items = facs.map((f, i) => ({ fi: i, miles: f.miles, type: f.type, title: f.title }))
+    .concat(stops).sort((a, b) => a.miles - b.miles);
+  if (items.length) {
+    $('route-facilities').innerHTML = `<h3>On the way (${items.length})</h3>` + items.map((it) => it.stop
+      ? `<div class="fac fac-stop" data-stop="${it.num}" data-lng="${it.lng}" data-lat="${it.lat}"><span class="fac-emoji">🚩</span><span class="fac-name"><b>Stop ${it.num}</b> · ${escapeHtml(it.name)}</span><span class="fac-mi">${it.miles.toFixed(1)} mi · ${etaStr(it.miles)}</span></div>`
+      : `<div class="fac" data-fi="${it.fi}"><span class="fac-emoji">${emojiFor(it.type)}</span><span class="fac-name">${escapeHtml(it.title)}</span><span class="fac-mi">${it.miles.toFixed(1)} mi · ${etaStr(it.miles)}</span></div>`).join('');
     $('route-facilities').querySelectorAll('.fac').forEach((el) => {
-      el.onclick = () => showFacAt(+el.dataset.fi);
+      if (el.dataset.stop) el.onclick = () => { setCollapsed(true); map.flyTo({ center: [+el.dataset.lng, +el.dataset.lat], zoom: 14, offset: [0, -40] }); };
+      else el.onclick = () => showFacAt(+el.dataset.fi);
     });
   } else {
     $('route-facilities').innerHTML = '<p class="muted small">No mapped facilities directly on this route.</p>';

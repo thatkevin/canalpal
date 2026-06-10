@@ -224,6 +224,7 @@ h3 { font-family: var(--pirata); font-weight: 400; margin: 1rem 0 .4rem; font-si
 .fac-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--teal); border: 2px solid var(--wood); flex: none; }
 .fac-emoji { flex: none; width: 1.6rem; text-align: center; font-size: 1.15rem; line-height: 1; }
 .fac-name { flex: 1; }
+.fac-stop { background: var(--parch2); border-left: 4px solid var(--brass); padding-left: .5rem; }
 .fac-mi { color: var(--wood2); font-size: 1rem; }
 
 .primary {
