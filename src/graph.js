@@ -447,8 +447,27 @@ export class CanalGraph {
       routeLocks,
       excludedMiles,
       excludedNames: [...excludedNames],
+      bendFactor: this.bendFactor(coords),
       facilities: this.facilitiesAlong(coords, 70),
     };
+  }
+
+  // Slowdown factor (>=1) for a twisty route, from its curvature: total absolute
+  // turning per mile. Engineered-straight canals (Shroppie cuttings ~70°/mi) get
+  // ~1; contour-hugging canals (~300°/mi) cruise slower. Capped at +18%.
+  bendFactor(coords) {
+    if (!coords || coords.length < 3) return 1;
+    let metres = 0, turn = 0;
+    for (let i = 1; i < coords.length; i++) metres += haversine(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+    for (let i = 1; i < coords.length - 1; i++) {
+      const b1 = bearing(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+      const b2 = bearing(coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1]);
+      let d = Math.abs(b2 - b1); if (d > 180) d = 360 - d;
+      turn += d;
+    }
+    const miles = metres / 1609.344;
+    if (miles < 0.1) return 1;
+    return 1 + Math.min(0.18, Math.max(0, (turn / miles - 120) * 0.0006));
   }
 
   // Route through an ordered list of waypoints (>=2). Concatenates the legs,
@@ -479,6 +498,7 @@ export class CanalGraph {
       coords, miles, furlongs: miles * 8, locks, milesByType, routeLocks,
       excludedMiles, excludedNames: [...excludedNames],
       legs: points.length - 1,
+      bendFactor: this.bendFactor(coords),
       facilities: this.facilitiesAlong(coords, 70),
     };
   }

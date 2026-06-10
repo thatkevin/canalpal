@@ -34,8 +34,8 @@ export function logTrip({ miles, locks, predictedHours, actualHours }) {
   return trips;
 }
 
-function rawHours(miles, locks, s) {
-  return miles / s.speedMph + (locks * s.lockMinutes) / 60;
+function rawHours(miles, locks, s, bendFactor = 1) {
+  return (miles * bendFactor) / s.speedMph + (locks * s.lockMinutes) / 60;
 }
 
 // Learned multiplier from logged trips (1 = no correction).
@@ -51,12 +51,16 @@ export function correctionFactor(s = getSettings()) {
   return { factor: sumActual / sumRaw, samples: trips.length };
 }
 
-export function estimate(miles, locks, s = getSettings()) {
+// opts.bendFactor (>=1, from graph.bendFactor) slows the cruising portion on
+// twisty canals. The learned correction is fit on un-bent raw hours, so this is
+// a physical adjustment on top of it.
+export function estimate(miles, locks, s = getSettings(), opts = {}) {
+  const bend = opts.bendFactor || 1;
   const { factor, samples } = correctionFactor(s);
-  const raw = rawHours(miles, locks, s);
+  const raw = rawHours(miles, locks, s, bend);
   const hours = raw * factor;
   const days = Math.max(1, Math.ceil(hours / s.hoursPerDay));
-  return { hours, days, factor, samples, cruiseHours: miles / s.speedMph, lockHours: (locks * s.lockMinutes) / 60 };
+  return { hours, days, factor, samples, bend, cruiseHours: (miles * bend) / s.speedMph, lockHours: (locks * s.lockMinutes) / 60 };
 }
 
 export function formatDuration(hours) {

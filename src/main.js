@@ -386,7 +386,7 @@ async function computeRoute() {
 
 function renderSummary(r) {
   const s = getSettings();
-  const est = estimate(r.miles, r.locks, s);
+  const est = estimate(r.miles, r.locks, s, { bendFactor: r.bendFactor });
   const miles = Math.floor(r.miles);
   const fur = Math.round((r.miles - miles) * 8);
   panelTitle = 'Journey';
