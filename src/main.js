@@ -178,7 +178,7 @@ function attachMapHandlers() {
       }
       showPoiPopup(e.lngLat, poiFromFeature(f)); return;
     }
-    addPoint({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+    choosePlace({ lng: e.lngLat.lng, lat: e.lngLat.lat });
   });
   map.on('mouseenter', 'stoppages', () => (map.getCanvas().style.cursor = 'pointer'));
   map.on('mouseleave', 'stoppages', () => (map.getCanvas().style.cursor = ''));
@@ -229,6 +229,63 @@ async function addPoint(p) {
   else { setRoute(map, null); setRouteLocks(map, null); requestServices(); updateHint(); }
 }
 
+// --- choosing a place: first one starts the journey, later ones preview first ---
+// (issue #13 — no more silent appending; a wrong start is fixed via per-stop ✕
+// removal and the search-bar Clear, which also resolves the stuck-start, #12)
+let preview = null;          // { p, index, route } — transient, not in `points`
+let previewMarker = null;
+async function choosePlace(p) {
+  if (!ready) return;
+  popup?.remove();
+  if (points.length === 0) { await addPoint(p); map.flyTo({ center: [p.lng, p.lat], zoom: 13 }); return; }
+  await showPreview(p);
+}
+async function showPreview(p) {
+  await snapPoint(p);
+  if (p.name === undefined || p.name === null) Object.assign(p, nameFor(p.lng, p.lat));
+  let index = points.length, route = null;
+  try { ({ index, route } = await call('bestinsert', { points, p })); } catch (e) { console.error(e); }
+  preview = { p, index, route };
+  previewMarker?.remove();
+  const el = document.createElement('div'); el.className = 'wp wp-preview'; el.innerHTML = '<span>?</span>';
+  previewMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(map);
+  map.flyTo({ center: [p.lng, p.lat], zoom: 13, offset: [0, -60] });
+  renderPreviewCard();
+}
+function clearPreview() { preview = null; previewMarker?.remove(); previewMarker = null; }
+function previewBack() {
+  clearPreview();
+  if (points.length >= 2 && lastRoute) renderSummary(lastRoute);
+  else if (points.length === 1) requestServices();
+  setCollapsed(true);
+}
+function previewAdd() {
+  if (!preview) return;
+  const { p, index, route } = preview;
+  points.splice(index, 0, p);
+  clearPreview();
+  renderMarkers();
+  if (route && points.length >= 2) applyRoute(route, false);
+  else computeRoute();
+}
+function renderPreviewCard() {
+  const { p, index } = preview;
+  const total = points.length + 1;
+  const where = total === 2 ? 'as your destination' : `as stop ${index + 1} of ${total}`;
+  panelTitle = 'Add a stop?';
+  summaryText = `📍 ${p.name || 'Place'} — add to route?`;
+  $('route-breadcrumb').innerHTML = `<b>📍 ${escapeHtml(p.name || 'Place')}</b>`;
+  $('route-warning').innerHTML = '';
+  $('route-stoppages').innerHTML = '';
+  $('route-summary').innerHTML = `<p class="muted small">Would slot in ${where} of your journey.</p>
+    <div class="preview-actions"><button id="pv-back" class="ghost">‹ Back to journey</button><button id="pv-add" class="primary">＋ Add to route</button></div>`;
+  $('route-facilities').innerHTML = '';
+  $('route-log').innerHTML = '';
+  $('pv-back').onclick = previewBack;
+  $('pv-add').onclick = previewAdd;
+  showPanel(); setCollapsed(false); // expand so the buttons show
+}
+
 // With only a start set, show the nearest boater services from there.
 async function requestServices() {
   const my = ++seq;
@@ -259,19 +316,15 @@ function renderMarkers() {
   updateUndoIcon();
 }
 
-// Broom for 0–1 points (the button clears); undo arrow for 2+ (removes a point).
-function updateUndoIcon() { $('btn-undo').textContent = points.length <= 1 ? '🧹' : '↶'; }
-
-// One button: undo the last point, or clear everything when none remain.
-function undoOrClear() {
-  if (points.length === 0) { reset(); return; }
-  points.pop(); popup?.remove(); renderMarkers();
-  if (points.length >= 2) computeRoute();
-  else if (points.length === 1) { lastRoute = null; setRoute(map, null); setRouteLocks(map, null); requestServices(); updateHint(); }
-  else reset(); // removed the last point → full clear
+// Undo = remove the last point (clearing whole-journey lives on the search bar now).
+function updateUndoIcon() {
+  $('btn-undo').textContent = '↶';
+  $('btn-undo').style.display = points.length ? '' : 'none';
+  const clear = $('search-clear'); if (clear) clear.style.display = (points.length || preview) ? '' : 'none';
 }
+function undoLast() { if (points.length) removeStop(points.length - 1); }
 function reset() {
-  points = []; lastRoute = null; renderMarkers();
+  points = []; lastRoute = null; clearPreview(); renderMarkers();
   clearRouteOnly(); $('search').value = ''; popup?.remove();
   promptForStart();
 }
@@ -376,12 +429,18 @@ async function computeRoute() {
       showError(`No canal route${leg} — try points closer to navigable water.`);
       return;
     }
-    lastRoute = r;
-    setRoute(map, r.coords); setRouteFacilities(map, r.facilities); setRouteLocks(map, r.routeLocks);
-    fitRoute(map, r.coords);
-    renderSummary(r);
+    applyRoute(r, true);
     setStatus('');
   } catch (err) { setStatus(''); showError(String(err.message || err)); }
+}
+
+// Paint a computed route onto the map + panel. `fit` re-frames the map (skip it
+// when we already have the route, e.g. confirming a previewed stop).
+function applyRoute(r, fit) {
+  lastRoute = r;
+  setRoute(map, r.coords); setRouteFacilities(map, r.facilities); setRouteLocks(map, r.routeLocks);
+  if (fit) fitRoute(map, r.coords);
+  renderSummary(r);
 }
 
 function renderSummary(r) {
@@ -390,7 +449,10 @@ function renderSummary(r) {
   const miles = Math.floor(r.miles);
   const fur = Math.round((r.miles - miles) * 8);
   panelTitle = 'Journey';
-  summaryText = `Journey: ${miles}mi ${fur}f, ${r.locks} lock${r.locks === 1 ? '' : 's'}, ${formatDuration(est.hours)}, ${est.days} day${est.days === 1 ? '' : 's'}`;
+  // lead the collapsed bar with the ordered stops (start › via › … › end) so the
+  // whole journey shows at a glance, then the key figures
+  const stopPath = points.map((p) => p.name || 'pin').join(' › ');
+  summaryText = `${stopPath} · ${miles}mi ${r.locks}lk · ${formatDuration(est.hours)}`;
 
   renderBreadcrumb();
 
@@ -517,10 +579,22 @@ function showStoppagePopup(s, nav) {
 }
 
 function renderBreadcrumb() {
-  $('route-breadcrumb').innerHTML = points.map((p) => {
+  $('route-breadcrumb').innerHTML = points.map((p, i) => {
     const label = escapeHtml(p.name || 'Dropped pin');
-    return p.id ? `<a href="${CANALPLAN}${p.id}" target="_blank" rel="noopener">${label}</a>` : `<span>${label}</span>`;
+    const link = p.id ? `<a href="${CANALPLAN}${p.id}" target="_blank" rel="noopener">${label}</a>` : `<span>${label}</span>`;
+    return `<span class="crumb">${link}<button class="crumb-x" data-i="${i}" title="Remove this stop">✕</button></span>`;
   }).join('<span class="sep">›</span>');
+  $('route-breadcrumb').querySelectorAll('.crumb-x').forEach((b) => { b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); removeStop(+b.dataset.i); }; });
+}
+// Remove any stop — start, middle or end — and re-plan (issue #13).
+function removeStop(i) {
+  if (i < 0 || i >= points.length) return;
+  points.splice(i, 1);
+  popup?.remove();
+  renderMarkers();
+  if (points.length >= 2) computeRoute();
+  else if (points.length === 1) { lastRoute = null; setRoute(map, null); setRouteLocks(map, null); requestServices(); updateHint(); }
+  else reset();
 }
 
 // --- POI popup (shared by map clicks + facility list) ---
@@ -541,13 +615,13 @@ function showPoiPopup(lngLat, { title, type, id }, nav) {
   popup?.remove();
   let html = navRow(nav) + `<div class="poi-title">${escapeHtml(title || '')}</div>`;
   if (type) html += `<div class="poi-type">${escapeHtml(type)}</div>`;
-  // offer to add this place to the journey once a start is set
-  if (points.length >= 1) html += `<a class="poi-route" href="#">🧭 Route to here</a>`;
+  // set as start (no journey yet) or preview adding it (start already set)
+  html += `<a class="poi-route" href="#">${points.length === 0 ? '⚓ Set as start' : '＋ Add to route'}</a>`;
   if (id) html += `<a class="poi-link" href="${CANALPLAN}${id}" target="_blank" rel="noopener">View on CanalPlanAC ↗</a>`;
   popup = new maplibregl.Popup({ offset: 14 }).setLngLat(lngLat).setHTML(html).addTo(map);
   wireNav(nav, showFacAt);
   const link = popup.getElement()?.querySelector('.poi-route');
-  if (link) link.onclick = (e) => { e.preventDefault(); popup?.remove(); addPoint({ lng: lngLat.lng, lat: lngLat.lat, name: title || type, id: id || '' }); };
+  if (link) link.onclick = (e) => { e.preventDefault(); popup?.remove(); choosePlace({ lng: lngLat.lng, lat: lngLat.lat, name: title || type, id: id || '' }); };
 }
 
 // --- popup prev/next: step through the route's facilities or stoppages ---
@@ -623,8 +697,7 @@ function renderResults(res) {
 function selectResult(p) {
   hideResults(); searchInput.value = ''; searchInput.blur();
   recordSearch(p);
-  map.flyTo({ center: [p.lng, p.lat], zoom: 13 });
-  addPoint({ lng: p.lng, lat: p.lat, name: p.name, id: p.id });
+  choosePlace({ lng: p.lng, lat: p.lat, name: p.name, id: p.id });
 }
 function hideResults() { $('search-results').classList.add('hidden'); }
 document.addEventListener('click', (e) => { if (!e.target.closest('#searchbar')) hideResults(); });
@@ -732,7 +805,7 @@ $('panel-header').onclick = () => setCollapsed(!$('panel').classList.contains('c
 function showError(t) { setHint(`<span class="err">${escapeHtml(t)}</span>`); }
 
 // --- toolbar ---
-$('btn-undo').onclick = undoOrClear;
+$('btn-undo').onclick = undoLast;
 function askForLocation() {
   try { map?._geolocate?.trigger(); } catch { /* needs gesture */ }
   // A one-shot getCurrentPosition is more reliable than the control's
@@ -758,7 +831,9 @@ function locateMe() {
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
   );
 }
-$('btn-locate').onclick = locateMe;
+// locate + clear now live on the search bar (issue #13)
+$('search-locate').onclick = locateMe;
+$('search-clear').onclick = () => { clearPreview(); reset(); };
 
 // --- settings ---
 $('btn-settings').onclick = () => {

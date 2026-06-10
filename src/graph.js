@@ -503,6 +503,20 @@ export class CanalGraph {
     };
   }
 
+  // Where to slot a new point into an existing journey: the gap that adds the
+  // least distance (so a stop partway along lands in the right order, not just
+  // appended). index is 1..points.length (never before the start). Returns the
+  // resulting route too, so the caller needn't re-route on confirm.
+  bestInsert(points, p) {
+    if (!points || points.length < 1) return { index: 0, route: null };
+    let best = null, bestMiles = Infinity, bestIdx = points.length;
+    for (let i = 1; i <= points.length; i++) {
+      const r = this.routeThrough([...points.slice(0, i), p, ...points.slice(i)]);
+      if (r && !r.error && r.miles < bestMiles) { bestMiles = r.miles; best = r; bestIdx = i; }
+    }
+    return { index: bestIdx, route: best };
+  }
+
   // Facilities within bufferM of the route polyline, ordered along the route.
   facilitiesAlong(coords, bufferM = 70) {
     const found = new Map(); // index -> {fac, along}

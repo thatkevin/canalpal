@@ -25,6 +25,9 @@ self.onmessage = async (e) => {
       if (!graph) throw new Error('graph not ready');
       const r = graph.routeThrough(payload.points);
       self.postMessage({ id, ok: true, result: r });
+    } else if (type === 'bestinsert') {
+      if (!graph) throw new Error('graph not ready');
+      self.postMessage({ id, ok: true, result: graph.bestInsert(payload.points, payload.p) });
     } else if (type === 'lockgroups') {
       if (!graph) throw new Error('graph not ready');
       self.postMessage({ id, ok: true, result: { groups: graph.lockGroups(), all: graph.lockData || [] } });

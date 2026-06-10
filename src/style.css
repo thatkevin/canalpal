@@ -91,11 +91,18 @@ button, input { font-family: var(--body); }
 
 /* ---- search ---- */
 #searchbar { position: absolute; top: 3.1rem; left: .7rem; right: 3.7rem; z-index: 6; }
+#search-row { display: flex; gap: .4rem; align-items: stretch; }
 #search {
-  width: 100%; padding: .55rem .75rem; font-size: 1.2rem; color: var(--ink);
+  flex: 1; min-width: 0; padding: .55rem .75rem; font-size: 1.2rem; color: var(--ink);
   background: var(--parch); border: 3px solid var(--wood); border-radius: 8px;
   box-shadow: inset 0 0 0 1px var(--rope), 0 3px 8px rgba(0,0,0,.35); outline: none;
 }
+.sbtn {
+  flex: none; width: 2.6rem; border: 3px solid var(--wood); border-radius: 8px;
+  background: radial-gradient(circle at 40% 35%, var(--parch), var(--parch2));
+  box-shadow: 0 3px 8px rgba(0,0,0,.35); cursor: pointer; font-size: 1.1rem; color: var(--wood); padding: 0;
+}
+.sbtn:active { transform: translateY(1px); }
 #search::placeholder { color: #9b8458; font-style: italic; }
 #search-results {
   list-style: none; margin: .4rem 0 0; padding: 0; background: var(--parch);
@@ -154,15 +161,24 @@ button, input { font-family: var(--body); }
   font-family: var(--pirata); font-size: 1.3rem; letter-spacing: .5px;
   position: sticky; top: 0; z-index: 2;
 }
+#route-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #panel-chevron { transition: transform .2s; }
 .panel.collapsed #panel-chevron { transform: rotate(180deg); }
 .panel.collapsed #panel-body { display: none; }
 #panel-body { padding: .8rem 1rem calc(1rem + env(safe-area-inset-bottom)); }
 
 /* breadcrumb */
-#route-breadcrumb { font-size: 1.2rem; line-height: 1.5; margin-bottom: .6rem; }
+#route-breadcrumb { font-size: 1.2rem; line-height: 1.7; margin-bottom: .6rem; }
 #route-breadcrumb a { color: var(--teal); text-decoration: underline; }
 #route-breadcrumb .sep { color: var(--wood2); margin: 0 .25rem; }
+.crumb { display: inline-flex; align-items: center; gap: .1rem; }
+.crumb-x { background: none; border: none; color: var(--wood2); cursor: pointer; font-size: .8rem; line-height: 1; padding: 0 .15rem; }
+.crumb-x:hover, .crumb-x:active { color: var(--red); }
+/* preview "add this stop?" buttons */
+.preview-actions { display: flex; gap: .5rem; margin-top: .7rem; }
+.preview-actions .primary, .preview-actions .ghost { flex: 1; }
+.ghost { background: var(--parch2); color: var(--ink); border: 2px solid var(--wood); border-radius: 8px; padding: .55rem; font-size: 1rem; cursor: pointer; }
+.ghost:active { transform: translateY(1px); }
 
 /* warning */
 .warn {
@@ -234,6 +250,9 @@ dialog menu button[value="save"] { background: var(--teal); color: var(--parch);
 .wp-end { background: var(--red); }
 .wp-via { background: var(--brass); }
 .wp-via span { color: var(--ink); text-shadow: none; }
+/* a place being previewed before it joins the journey (issue #13) */
+.wp-preview { background: #6b4fa0; border-style: dashed; animation: pv-pulse 1.4s ease-in-out infinite; }
+@keyframes pv-pulse { 0%,100% { box-shadow: 0 0 0 2px var(--wood), 0 2px 5px rgba(0,0,0,.45); } 50% { box-shadow: 0 0 0 6px rgba(107,79,160,.4), 0 2px 5px rgba(0,0,0,.45); } }
 
 /* ---- popups ---- */
 .maplibregl-popup-content {

@@ -43,15 +43,18 @@
     </header>
 
     <div id="searchbar">
-      <input id="search" type="search" placeholder="Search a place, junction or lock…" autocomplete="off" />
+      <div id="search-row">
+        <input id="search" type="search" placeholder="Search a place, junction or lock…" autocomplete="off" />
+        <button id="search-locate" class="sbtn" title="Find me">📍</button>
+        <button id="search-clear" class="sbtn" title="Clear journey">✕</button>
+      </div>
       <ul id="search-results" class="hidden"></ul>
     </div>
 
     <div id="hint" class="hint"></div>
 
     <nav id="toolbar">
-      <button id="btn-undo" class="tool" title="Undo last point (clears when empty)">↶</button>
-      <button id="btn-locate" class="tool" title="Find me">📍</button>
+      <button id="btn-undo" class="tool" title="Undo last stop">↶</button>
       <button id="btn-settings" class="tool" title="Speeds & times">⚙︎</button>
     </nav>
 
