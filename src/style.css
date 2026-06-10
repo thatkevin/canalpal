@@ -184,8 +184,9 @@ button, input { font-family: var(--body); }
 .crumb-x { background: none; border: none; color: var(--wood2); cursor: pointer; font-size: .8rem; line-height: 1; padding: 0 .15rem; }
 .crumb-x:hover, .crumb-x:active { color: var(--red); }
 /* preview "add this stop?" buttons */
-.preview-actions { display: flex; gap: .5rem; margin-top: .7rem; }
-.preview-actions .primary, .preview-actions .ghost { flex: 1; }
+.preview-actions { display: flex; align-items: stretch; gap: .5rem; margin-top: .7rem; }
+/* same box so Back/Add match height (primary normally carries a top margin + bigger font) */
+.preview-actions .primary, .preview-actions .ghost { flex: 1; margin: 0; box-sizing: border-box; min-height: 2.8rem; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; }
 .ghost { background: var(--parch2); color: var(--ink); border: 2px solid var(--wood); border-radius: 8px; padding: .55rem; font-size: 1rem; cursor: pointer; }
 .ghost:active { transform: translateY(1px); }
 

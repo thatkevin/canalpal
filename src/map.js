@@ -53,41 +53,48 @@ const catLayers = POI_CATS.map((c) => ({
     'icon-size': ['interpolate', ['linear'], ['zoom'], 11, 0.4, 16, 0.75] },
 }));
 
-// Locks: always on, monochrome (black & white, as in life), prominent. Flights
-// (consecutive locks on one stretch) are pre-grouped in the routing graph and
-// drawn as a single downstream arrow with the lock count beside it — e.g. ❯(7).
-// Flights break into individual locks across this zoom band: the flight marker
-// fades out and the individual locks fade in, so the split is a smooth cross-fade
-// rather than a pop. Lowered so flights separate sooner.
-const SPLIT_LO = 12.5, SPLIT_HI = 13.4;
+// Locks shown at three zoom tiers so the map stays readable as you zoom:
+//  - coarse flights (big groups) zoomed out — Atherstone reads as ❯(11)
+//  - fine flights (tighter groups) at mid zoom — Atherstone splits to (2)(2)(2)(5)
+//  - every individual lock zoomed right in
+// Monochrome (black & white, as in life). Adjacent tiers cross-fade; the (N)
+// labels stay hidden until markers are separated enough to read.
+const T1 = 11, T2 = 13;   // tier changes: coarse↔fine, fine↔individual
+const FADE = 0.4;         // half-width of each cross-fade band
+const flightLayout = {
+  'icon-image': ['case', ['>', ['get', 'count'], 1], 'ic-lock-flight', 'ic-lock'], 'icon-allow-overlap': true,
+  'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map',
+  // base size by zoom, each stop scaled up ~12% per 5 locks. NB: ['zoom'] must
+  // stay the top-level interpolate input — scale the OUTPUTS by count.
+  'icon-size': ['interpolate', ['linear'], ['zoom'],
+    9, ['*', 0.6, ['+', 1, ['*', 0.12, ['floor', ['/', ['-', ['get', 'count'], 1], 5]]]]],
+    13, ['*', 0.95, ['+', 1, ['*', 0.12, ['floor', ['/', ['-', ['get', 'count'], 1], 5]]]]]],
+  'text-field': ['case', ['>', ['get', 'count'], 1], ['concat', '(', ['to-string', ['get', 'count']], ')'], ''],
+  'text-font': ['Open Sans Regular'], 'text-size': 13, 'text-offset': [1.1, 0], 'text-anchor': 'left',
+  'text-allow-overlap': true, 'text-optional': true,
+};
+const lockHalo = { 'text-color': '#111', 'text-halo-color': '#fff', 'text-halo-width': 1.6 };
 const lockLayers = [
-  // zoomed out: one marker per flight — a bolder triple chevron for a stretch of
-  // locks (count > 1) or the plain double chevron for a single lock, with the
-  // lock count beside it: ❯(7).
-  { id: 'lock-flight', type: 'symbol', source: 'locks', minzoom: 8, maxzoom: SPLIT_HI,
-    layout: {
-      'icon-image': ['case', ['>', ['get', 'count'], 1], 'ic-lock-flight', 'ic-lock'], 'icon-allow-overlap': true,
-      'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map',
-      // base size by zoom, each stop scaled up ~12% per 5 locks. NB: ['zoom']
-      // must stay the top-level interpolate input — scale the OUTPUTS by count,
-      // never nest the zoom interpolate inside another expression.
-      'icon-size': ['interpolate', ['linear'], ['zoom'],
-        9, ['*', 0.6, ['+', 1, ['*', 0.12, ['floor', ['/', ['-', ['get', 'count'], 1], 5]]]]],
-        13, ['*', 0.95, ['+', 1, ['*', 0.12, ['floor', ['/', ['-', ['get', 'count'], 1], 5]]]]]],
-      'text-field': ['case', ['>', ['get', 'count'], 1], ['concat', '(', ['to-string', ['get', 'count']], ')'], ''],
-      'text-font': ['Open Sans Regular'], 'text-size': 13, 'text-offset': [1.1, 0], 'text-anchor': 'left',
-      'text-allow-overlap': true, 'text-optional': true,
-    },
-    paint: { 'text-color': '#111', 'text-halo-color': '#fff', 'text-halo-width': 1.6,
-      'icon-opacity': ['interpolate', ['linear'], ['zoom'], SPLIT_LO, 1, SPLIT_HI, 0],
-      'text-opacity': ['interpolate', ['linear'], ['zoom'], SPLIT_LO, 1, SPLIT_HI, 0] } },
-  // zoomed in: every individual lock as its own downstream arrow, fading in as the
-  // flight marker fades out
-  { id: 'lock-point', type: 'symbol', source: 'locks-all', minzoom: SPLIT_LO,
+  // coarse flights — fade out into the fine tier at T1
+  { id: 'lock-coarse', type: 'symbol', source: 'locks-coarse', minzoom: 8, maxzoom: T1 + FADE,
+    layout: { ...flightLayout },
+    paint: { ...lockHalo,
+      'icon-opacity': ['interpolate', ['linear'], ['zoom'], T1 - FADE, 1, T1 + FADE, 0],
+      // coarse groups are well separated — show counts (just not on the national view)
+      'text-opacity': ['interpolate', ['linear'], ['zoom'], 9.5, 0, 10.2, 1, T1 - FADE, 1, T1 + FADE, 0] } },
+  // fine flights — fade in from coarse at T1, out into individual locks at T2
+  { id: 'lock-fine', type: 'symbol', source: 'locks-fine', minzoom: T1 - FADE, maxzoom: T2 + FADE,
+    layout: { ...flightLayout },
+    paint: { ...lockHalo,
+      'icon-opacity': ['interpolate', ['linear'], ['zoom'], T1 - FADE, 0, T1 + FADE, 1, T2 - FADE, 1, T2 + FADE, 0],
+      // tight fine flights overlap — hold their (N) labels back until close enough
+      'text-opacity': ['interpolate', ['linear'], ['zoom'], 11.9, 0, 12.4, 1, T2 - FADE, 1, T2 + FADE, 0] } },
+  // individual locks — fade in from the fine tier at T2
+  { id: 'lock-point', type: 'symbol', source: 'locks-all', minzoom: T2 - FADE,
     layout: { 'icon-image': 'ic-lock', 'icon-allow-overlap': true,
       'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map',
       'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.7, 16, 1.15] },
-    paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], SPLIT_LO, 0, SPLIT_HI, 1] } },
+    paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], T2 - FADE, 0, T2 + FADE, 1] } },
 ];
 
 // Draw an emoji centred in a coloured disc and register it as a map image.
@@ -155,8 +162,9 @@ export function createMap(container) {
         routefac: { type: 'geojson', data: empty() },
         routelocks: { type: 'geojson', data: empty() },
         stoppages: { type: 'geojson', data: empty() },
-        locks: { type: 'geojson', data: empty() },       // flight markers (zoomed out)
-        'locks-all': { type: 'geojson', data: empty() },  // every individual lock (zoomed in)
+        'locks-coarse': { type: 'geojson', data: empty() }, // big flights (zoomed out)
+        'locks-fine': { type: 'geojson', data: empty() },   // tighter flights (mid zoom)
+        'locks-all': { type: 'geojson', data: empty() },    // every individual lock (zoomed in)
       },
       layers: [
         { id: 'bg', type: 'background', paint: { 'background-color': '#aadaff' } },
@@ -256,8 +264,8 @@ export function setRouteLocks(map, locks) {
   map.getSource('routelocks').setData({ type: 'FeatureCollection', features: (locks || []).map((l) => ({ type: 'Feature', properties: { rot: (l.rot || 0) + (l.flip ? 180 : 0), title: l.title }, geometry: { type: 'Point', coordinates: [l.lng, l.lat] } })) });
 }
 // All locks on the network (clustered) — shown throughout, always on.
-export function setLocks(map, groups) {
-  map.getSource('locks')?.setData({ type: 'FeatureCollection', features: (groups || []).map((g) => ({ type: 'Feature', properties: { title: g.title, chambers: g.chambers || 1, count: g.count || 1, rot: g.rot || 0 }, geometry: { type: 'Point', coordinates: [g.lng, g.lat] } })) });
+export function setLockFlights(map, sourceId, groups) {
+  map.getSource(sourceId)?.setData({ type: 'FeatureCollection', features: (groups || []).map((g) => ({ type: 'Feature', properties: { title: g.title, chambers: g.chambers || 1, count: g.count || 1, rot: g.rot || 0 }, geometry: { type: 'Point', coordinates: [g.lng, g.lat] } })) });
 }
 // Every individual lock (shown when zoomed in past the flight grouping).
 export function setLocksAll(map, locks) {

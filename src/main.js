@@ -1,4 +1,4 @@
-import { createMap, maplibregl, protocol, POI_LAYERS, POI_CATS, setRoute, setRouteFacilities, setRouteLocks, setStoppages, setLocks, setLocksAll, setLayerVisible, fitRoute } from './map.js';
+import { createMap, maplibregl, protocol, POI_LAYERS, POI_CATS, setRoute, setRouteFacilities, setRouteLocks, setStoppages, setLockFlights, setLocksAll, setLayerVisible, fitRoute } from './map.js';
 import { estimate, formatDuration, getSettings, saveSettings, correctionFactor, logTrip } from './time-model.js';
 import RouterWorker from './router.worker.js?worker';
 
@@ -151,13 +151,13 @@ function attachMapHandlers() {
   map.on('error', () => {});
 
   // feed the locks once both the style and the grouped data are ready
-  map.on('load', () => { if (lockGroupsData.length) applyLocks(); applyLayerPrefs(); });
+  map.on('load', () => { if (lockAllData.length) applyLocks(); applyLayerPrefs(); });
 
   // map click: open a POI popup, else drop a waypoint
   map.on('click', (e) => {
     if (!ready) return;
     // a lock flight (zoomed out) or an individual lock (zoomed in) → info popup
-    const lp = map.queryRenderedFeatures(e.point, { layers: ['lock-flight', 'lock-point'] });
+    const lp = map.queryRenderedFeatures(e.point, { layers: ['lock-coarse', 'lock-fine', 'lock-point'] });
     if (lp.length) {
       const p = lp[0].properties;
       const type = p.count > 1 ? `Lock flight · ${p.count} locks` : 'Lock';
@@ -339,18 +339,17 @@ function clearRouteOnly() {
 let gazetteer = [];
 fetch(BASE + 'data/places-named.json').then((r) => r.json()).then((d) => { gazetteer = d; });
 
-// locks — always on. Zoomed out: flights grouped by the routing graph
-// (graph.lockGroups). Zoomed in: every individual lock. Loaded once the worker's
-// network is ready (see boot), then fed to the map.
-let lockGroupsData = [], lockAllData = [];
+// locks — always on, in three zoom tiers: coarse flights (zoomed out) → fine
+// flights → every individual lock. Loaded once the worker's network is ready.
+let lockCoarse = [], lockFine = [], lockAllData = [];
 function applyLocks() {
   if (!map) return;
-  const feed = () => { setLocks(map, lockGroupsData); setLocksAll(map, lockAllData); };
+  const feed = () => { setLockFlights(map, 'locks-coarse', lockCoarse); setLockFlights(map, 'locks-fine', lockFine); setLocksAll(map, lockAllData); };
   if (map.isStyleLoaded()) feed(); else map.once('load', feed);
 }
 function loadLockGroups() {
   call('lockgroups').then((r) => {
-    lockGroupsData = r?.groups || []; lockAllData = r?.all || [];
+    lockCoarse = r?.coarse || []; lockFine = r?.fine || []; lockAllData = r?.all || [];
     applyLocks();
   }).catch((e) => console.error(e));
 }

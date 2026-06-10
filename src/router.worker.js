@@ -30,7 +30,8 @@ self.onmessage = async (e) => {
       self.postMessage({ id, ok: true, result: graph.bestInsert(payload.points, payload.p) });
     } else if (type === 'lockgroups') {
       if (!graph) throw new Error('graph not ready');
-      self.postMessage({ id, ok: true, result: { groups: graph.lockGroups(), all: graph.lockData || [] } });
+      // three zoom tiers: coarse flights (zoomed out) → fine flights → every lock
+      self.postMessage({ id, ok: true, result: { coarse: graph.lockGroups(900), fine: graph.lockGroups(400), all: graph.lockData || [] } });
     } else if (type === 'snap') {
       if (!graph) throw new Error('graph not ready');
       self.postMessage({ id, ok: true, result: graph.snap(payload.point) });
