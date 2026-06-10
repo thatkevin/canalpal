@@ -748,6 +748,70 @@ function wireSavedRows() {
   });
 }
 
+// --- backup / restore as readable text (places, journeys, settings, map key) ---
+function resolvePlaceByName(name) {
+  if (!gazetteer.length || !name) return null;
+  const q = name.trim().toLowerCase();
+  for (const g of gazetteer) if (g.name.toLowerCase() === q) return g; // exact
+  let best = null;
+  for (const g of gazetteer) if (g.name.toLowerCase().startsWith(q) && (!best || g.name.length < best.name.length)) best = g;
+  return best || gazetteer.find((g) => g.name.toLowerCase().includes(q)) || null;
+}
+function exportText() {
+  const places = getSearches().filter((x) => x.star);
+  const journeys = getJourneys();
+  const s = getSettings();
+  const prefs = getLayerPrefs();
+  const L = ['Canal Pal data', '', 'Saved places:'];
+  places.length ? places.forEach((p) => L.push('- ' + p.name)) : L.push('- (none)');
+  L.push('', 'Saved journeys:');
+  journeys.length ? journeys.forEach((j) => L.push('- ' + j.name + ': ' + j.points.map((p) => p.name || 'pin').join(' -> '))) : L.push('- (none)');
+  L.push('', 'Settings:', 'Cruising speed: ' + s.speedMph + ' mph', 'Minutes per lock: ' + s.lockMinutes,
+    'Cruising hours per day: ' + s.hoursPerDay, 'Theme: ' + (theme === 'gongoozler' ? 'Gongoozler' : 'Pirate'));
+  L.push('', 'Map key:');
+  for (const c of POI_CATS) L.push(c.label + ': ' + (prefs[c.id] !== false ? 'show' : 'hide'));
+  return L.join('\n');
+}
+function importText(text) {
+  const labelToId = {}; for (const c of POI_CATS) labelToId[c.label.toLowerCase()] = c.id;
+  const splitKV = (line) => { const i = line.indexOf(':'); return [line.slice(0, i).trim(), line.slice(i + 1).trim()]; };
+  let section = null;
+  const places = [], journeys = [];
+  const settings = { ...getSettings() }; const prefs = { ...getLayerPrefs() }; let newTheme = theme;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim(); if (!line) continue;
+    const low = line.toLowerCase();
+    if (/^canal pal data/.test(low)) continue;
+    if (low === 'saved places:') { section = 'places'; continue; }
+    if (low === 'saved journeys:') { section = 'journeys'; continue; }
+    if (low === 'settings:') { section = 'settings'; continue; }
+    if (low === 'map key:') { section = 'mapkey'; continue; }
+    if (section === 'places') { const n = line.replace(/^[-•]\s*/, ''); if (n && n !== '(none)') places.push(n); }
+    else if (section === 'journeys') { let b = line.replace(/^[-•]\s*/, ''); if (!b || b === '(none)') continue; let name = b, seq = b; const ci = b.indexOf(':'); if (ci > 0) { name = b.slice(0, ci).trim(); seq = b.slice(ci + 1).trim(); } journeys.push({ name, stops: seq.split('->').map((x) => x.trim()).filter(Boolean) }); }
+    else if (section === 'settings') { const [k, v] = splitKV(line); if (/speed/i.test(k)) settings.speedMph = parseFloat(v) || settings.speedMph; else if (/lock/i.test(k)) settings.lockMinutes = parseFloat(v) || settings.lockMinutes; else if (/hours/i.test(k)) settings.hoursPerDay = parseFloat(v) || settings.hoursPerDay; else if (/theme/i.test(k)) newTheme = /gong/i.test(v) ? 'gongoozler' : 'pirate'; }
+    else if (section === 'mapkey') { const [k, v] = splitKV(line); const id = labelToId[k.toLowerCase()]; if (id) prefs[id] = !/hide/i.test(v); }
+  }
+  let addedP = 0, addedJ = 0, missed = 0;
+  if (places.length) {
+    const cur = getSearches();
+    for (const nm of places) { const g = resolvePlaceByName(nm); if (!g) { missed++; continue; } if (!cur.some((x) => x.id === g.id && x.name === g.name)) { cur.unshift({ name: g.name, lng: g.lng, lat: g.lat, id: g.id || '', layer: g.layer || '', region: g.region || '', star: true, at: Date.now() }); addedP++; } }
+    saveSearches(cur);
+  }
+  if (journeys.length) {
+    const cur = getJourneys();
+    journeys.forEach((j, idx) => {
+      const pts = j.stops.map(resolvePlaceByName).map((g) => { if (!g) { missed++; return null; } return { lng: g.lng, lat: g.lat, name: g.name, id: g.id || '' }; }).filter(Boolean);
+      if (pts.length >= 2) { cur.unshift({ id: 'j' + Date.now() + '-' + idx, name: j.name, points: pts, at: Date.now() }); addedJ++; }
+    });
+    saveJourneys(cur);
+  }
+  saveSettings({ speedMph: settings.speedMph, lockMinutes: settings.lockMinutes, hoursPerDay: settings.hoursPerDay });
+  theme = newTheme; localStorage.setItem('cp.theme', theme); applyTheme();
+  localStorage.setItem(LAYER_KEY, JSON.stringify(prefs)); applyLayerPrefs();
+  if (lastRoute) renderSummary(lastRoute);
+  return { addedP, addedJ, missed };
+}
+
 const SEARCH_KEY = 'cp.searches';
 const getSearches = () => { try { return JSON.parse(localStorage.getItem(SEARCH_KEY) || '[]'); } catch { return []; } };
 const saveSearches = (a) => localStorage.setItem(SEARCH_KEY, JSON.stringify(a));
@@ -903,6 +967,17 @@ $('set-save').addEventListener('click', () => {
   applyTheme();
   if (lastRoute) renderSummary(lastRoute);
 });
+
+// backup / restore (readable text)
+$('data-export').onclick = () => { $('data-text').value = exportText(); $('data-text').select(); $('data-note').textContent = 'Select all and copy this somewhere safe.'; };
+$('data-import').onclick = () => {
+  const txt = $('data-text').value.trim();
+  if (!txt) { $('data-note').textContent = 'Paste your exported text first.'; return; }
+  try {
+    const r = importText(txt);
+    $('data-note').textContent = `Restored ${r.addedP} place(s), ${r.addedJ} journey(s), settings & map key${r.missed ? ` · ${r.missed} name(s) not found on the network` : ''}.`;
+  } catch (e) { $('data-note').textContent = "Couldn't read that text — check the section headings."; console.error(e); }
+};
 
 function clamp(n, lo, hi, dflt) { return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt; }
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

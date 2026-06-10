@@ -12,8 +12,8 @@
     </script>
     <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <script type="module" crossorigin src="/canalpal/assets/index-DGsAZl8Q.js"></script>
-    <link rel="stylesheet" crossorigin href="/canalpal/assets/index-D-LJKMdv.css">
+    <script type="module" crossorigin src="/canalpal/assets/index-CujyyZWk.js"></script>
+    <link rel="stylesheet" crossorigin href="/canalpal/assets/index-4ZQLS-mb.css">
   <link rel="manifest" href="/canalpal/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/canalpal/registerSW.js"></script></head>
   <body>
     <div id="map"></div>
@@ -98,6 +98,15 @@
           </select>
         </label>
         <p id="calib-note" class="muted"></p>
+        <details id="data-io">
+          <summary>Back up / restore my data</summary>
+          <textarea id="data-text" rows="7" placeholder="Tap ‘Export’ to fill this with your places, journeys & settings — copy it somewhere safe. To restore, paste it back and tap ‘Import’."></textarea>
+          <menu>
+            <button type="button" id="data-export">Export</button>
+            <button type="button" id="data-import">Import</button>
+          </menu>
+          <p id="data-note" class="muted small"></p>
+        </details>
         <p class="credit" id="credit"></p>
         <menu>
           <button value="cancel">Close</button>
