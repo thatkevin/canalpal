@@ -288,28 +288,37 @@ dialog menu button[value="save"] { background: var(--teal); color: var(--parch);
 .nav-btn:active { transform: translateY(1px); }
 .nav-count { flex: 1; text-align: center; font-size: .95rem; color: var(--wood2); }
 
-/* ---- map key / legend (bottom-right) ---- */
-.legend { position: absolute; right: .7rem; bottom: 1.6rem; z-index: 5; width: 12.5rem; max-width: 60vw; transition: bottom .2s;
-  background: var(--parch); border: 3px solid var(--wood); border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,.4); overflow: hidden; }
-#legend-head { width: 100%; text-align: left; background: var(--wood); color: var(--parch); border: none;
-  font-family: var(--pirata); font-size: 1.1rem; letter-spacing: .02em; padding: .35rem .6rem; cursor: pointer; }
-#legend-head::after { content: '▾'; float: right; }
-.legend.legend-closed #legend-head::after { content: '▸'; }
-.legend.legend-closed #legend-body { display: none; }
-#legend-body { padding: .3rem; }
+/* ---- map key (rows, now inside the Settings → Map key tab) ---- */
+#legend-body { margin-top: .3rem; }
 .leg-row { display: flex; align-items: center; gap: .5rem; width: 100%; text-align: left; background: none;
-  border: none; border-radius: 6px; padding: .3rem .35rem; font-size: 1rem; color: var(--ink); cursor: pointer; }
+  border: none; border-radius: 6px; padding: .4rem .35rem; font-size: 1.05rem; color: var(--ink); cursor: pointer; }
 .leg-row[data-cat]:hover { background: var(--parch2); }
-.leg-emoji { flex: none; width: 1.5rem; text-align: center; font-size: 1.1rem; line-height: 1; }
+.leg-emoji { flex: none; width: 1.6rem; text-align: center; font-size: 1.2rem; line-height: 1; }
 .leg-label { flex: 1; }
 .leg-off { color: var(--wood2); opacity: .55; }
+
+/* settings gear sitting in the top-bar fade, top-right */
+.topbar-btn { margin-left: auto; flex: none; background: rgba(255,255,255,.12); color: var(--parch);
+  border: 1px solid rgba(255,255,255,.35); border-radius: 8px; font-size: 1.2rem; line-height: 1;
+  width: 2.1rem; height: 2.1rem; cursor: pointer; }
+.topbar-btn:active { transform: translateY(1px); }
+
+/* settings dialog tabs */
+#settings .tabs { display: flex; gap: .4rem; margin-bottom: .8rem; }
+#settings .tab { flex: 1; background: var(--parch2); color: var(--wood2); border: 2px solid var(--wood);
+  border-radius: 8px; padding: .45rem; font-family: var(--pirata); font-size: 1.1rem; cursor: pointer; }
+#settings .tab.on { background: var(--teal); color: var(--parch); }
+#settings .tabpanel.hidden { display: none; }
+
+/* live-tracking action row (compass + end) */
+.trk-actions { display: flex; gap: .5rem; margin-top: .7rem; }
+.trk-actions .ghost, .trk-actions .primary { flex: 1; margin: 0; box-sizing: border-box; min-height: 2.8rem; display: flex; align-items: center; justify-content: center; }
+#trk-compass.on { background: var(--teal); color: var(--parch); border-color: var(--wood); }
 
 /* ---- maplibre controls ---- */
 /* lift bottom controls + attribution clear of the (closed) journey bar */
 .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { transition: bottom .2s; }
 body.panel-open .maplibregl-ctrl-bottom-left, body.panel-open .maplibregl-ctrl-bottom-right { bottom: 58px; }
-/* keep the map-key clear of the journey bar too */
-body.panel-open #legend { bottom: 64px; }
 /* settings: backup / restore */
 #data-io { margin: .6rem 0; }
 #data-io summary { cursor: pointer; color: var(--teal); font-size: 1rem; }

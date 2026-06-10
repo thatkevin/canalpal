@@ -40,13 +40,13 @@
       <img id="brand-parrot" src="./img/parrot.gif" alt="" width="34" height="43" />
       <strong>Canal Pal</strong>
       <span id="status" class="status"></span>
+      <button id="btn-settings" class="topbar-btn" title="Settings & map key">⚙︎</button>
     </header>
 
     <div id="searchbar">
       <div id="search-row">
         <input id="search" type="search" placeholder="Search a place, junction or lock…" autocomplete="off" />
         <button id="search-locate" class="sbtn" title="Find me">📍</button>
-        <button id="search-clear" class="sbtn" title="Clear journey">✕</button>
       </div>
       <ul id="search-results" class="hidden"></ul>
     </div>
@@ -54,15 +54,8 @@
     <div id="hint" class="hint"></div>
 
     <nav id="toolbar">
-      <button id="btn-undo" class="tool" title="Undo last stop">↶</button>
-      <button id="btn-compass" class="tool" title="Face direction of travel / back to north">🧭</button>
-      <button id="btn-settings" class="tool" title="Speeds & times">⚙︎</button>
+      <button id="btn-undo" class="tool" title="Undo last stop, or clear">↶</button>
     </nav>
-
-    <div id="legend" class="legend legend-closed">
-      <button id="legend-head" type="button">Map key</button>
-      <div id="legend-body"></div>
-    </div>
 
     <section id="panel" class="panel hidden collapsed">
       <button id="panel-header" type="button" aria-expanded="false">
@@ -81,32 +74,43 @@
 
     <dialog id="settings">
       <form method="dialog">
-        <h3>Speeds &amp; times</h3>
-        <label>Cruising speed (mph)
-          <input id="set-speed" type="number" min="1" max="8" step="0.5" />
-        </label>
-        <label>Minutes per lock
-          <input id="set-lock" type="number" min="1" max="40" step="1" />
-        </label>
-        <label>Cruising hours per day
-          <input id="set-hours" type="number" min="2" max="14" step="0.5" />
-        </label>
-        <label>Theme
-          <select id="set-theme">
-            <option value="pirate">Pirate</option>
-            <option value="gongoozler">Gongoozler (plain)</option>
-          </select>
-        </label>
-        <p id="calib-note" class="muted"></p>
-        <details id="data-io">
-          <summary>Back up / restore my data</summary>
-          <textarea id="data-text" rows="7" placeholder="Tap ‘Export’ to fill this with your places, journeys & settings — copy it somewhere safe. To restore, paste it back and tap ‘Import’."></textarea>
-          <menu>
-            <button type="button" id="data-export">Export</button>
-            <button type="button" id="data-import">Import</button>
-          </menu>
-          <p id="data-note" class="muted small"></p>
-        </details>
+        <div class="tabs">
+          <button type="button" class="tab on" data-tab="main">Settings</button>
+          <button type="button" class="tab" data-tab="mapkey">Map key</button>
+        </div>
+        <div class="tabpanel" data-panel="main">
+          <h3>Speeds &amp; times</h3>
+          <label>Cruising speed (mph)
+            <input id="set-speed" type="number" min="1" max="8" step="0.5" />
+          </label>
+          <label>Minutes per lock
+            <input id="set-lock" type="number" min="1" max="40" step="1" />
+          </label>
+          <label>Cruising hours per day
+            <input id="set-hours" type="number" min="2" max="14" step="0.5" />
+          </label>
+          <label>Theme
+            <select id="set-theme">
+              <option value="pirate">Pirate</option>
+              <option value="gongoozler">Gongoozler (plain)</option>
+            </select>
+          </label>
+          <p id="calib-note" class="muted"></p>
+          <details id="data-io">
+            <summary>Back up / restore my data</summary>
+            <textarea id="data-text" rows="7" placeholder="Tap ‘Export’ to fill this with your places, journeys & settings — copy it somewhere safe. To restore, paste it back and tap ‘Import’."></textarea>
+            <menu>
+              <button type="button" id="data-export">Export</button>
+              <button type="button" id="data-import">Import</button>
+            </menu>
+            <p id="data-note" class="muted small"></p>
+          </details>
+        </div>
+        <div class="tabpanel hidden" data-panel="mapkey">
+          <h3>Map key — show / hide</h3>
+          <p class="muted small">Locks are always shown. Tap a row to hide or show that type.</p>
+          <div id="legend-body"></div>
+        </div>
         <p class="credit" id="credit"></p>
         <menu>
           <button value="cancel">Close</button>

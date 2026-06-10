@@ -256,9 +256,11 @@ async function showPreview(p) {
 function clearPreview() { preview = null; previewMarker?.remove(); previewMarker = null; }
 function previewBack() {
   clearPreview();
-  if (points.length >= 2 && lastRoute) renderSummary(lastRoute);
+  if (active) renderTracking();                                  // resume the live view
+  else if (points.length >= 2 && lastRoute) renderSummary(lastRoute);
   else if (points.length === 1) requestServices();
   setCollapsed(true);
+  updateUndoIcon();
 }
 function previewAdd() {
   if (!preview) return;
@@ -270,6 +272,7 @@ function previewAdd() {
   else computeRoute();
 }
 function renderPreviewCard() {
+  panelView = 'preview';
   const { p, index } = preview;
   // describe where it lands, rather than an opaque "stop N of M": between the two
   // stops it falls between, or as the new destination at the end.
@@ -288,12 +291,15 @@ function renderPreviewCard() {
   $('pv-back').onclick = previewBack;
   $('pv-add').onclick = previewAdd;
   showPanel(); setCollapsed(false); // expand so the buttons show
+  updateUndoIcon();
 }
 
 // --- live journey tracking: "Avast — start", live position + ETA, resume on reload ---
 let active = null;        // { points, startedAt, track:[{lng,lat,t}] } — persisted
 let watchId = null;
 let liveMarker = null;
+let lastProg = null;      // most recent route progress, for in-place tracking updates
+let panelView = null;     // which view the panel is showing: journey|services|preview|tracking|history
 const ACTIVE_KEY = 'cp.active';
 const ARRIVE_MI = 0.12;   // ~190 m from the destination counts as arrived
 const saveActive = () => { try { localStorage.setItem(ACTIVE_KEY, JSON.stringify(active)); } catch { /* quota */ } };
@@ -320,11 +326,14 @@ function onFix(pos) {
   if (liveMarker) liveMarker.setLngLat([p.lng, p.lat]);
   else { const el = document.createElement('div'); el.className = 'wp wp-live'; el.innerHTML = '<span>⛵</span>'; liveMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(map); }
   setTrail(map, active.track.map((q) => [q.lng, q.lat]));
-  const prog = routeProgress(p);
-  renderTracking(prog);
+  lastProg = routeProgress(p);
+  // Only refresh the tracking numbers in place — never rebuild/recollapse the
+  // panel here, so the user can expand it to tap "end", or wander off to preview
+  // and add another stop, without it flipping back. (Builds the panel if needed.)
+  if (panelView === 'tracking') updateTrackingNumbers(lastProg);
   // Don't call it arrived while a lock still lies ahead on the route — wait until
   // you're on the destination's side of it.
-  if (prog && prog.remainingMiles <= ARRIVE_MI && prog.locksAhead === 0) endJourney(true);
+  if (lastProg && lastProg.remainingMiles <= ARRIVE_MI && lastProg.locksAhead === 0) endJourney(true);
 }
 // Along-route distance (miles) of each lock, cached on the route so we can tell
 // how many locks still lie ahead of the current position.
@@ -377,34 +386,52 @@ function trackStats() {
   }
   return { distMi, cur };
 }
-function renderTracking(prog) {
+// Build the tracking panel once (on start / route change). onFix then only
+// updates the numbers in place via updateTrackingNumbers — no rebuilds.
+function renderTracking() {
   if (!active) return;
+  panelView = 'tracking';
   panelTitle = 'On your way';
-  const elapsed = (Date.now() - active.startedAt) / 3600000;
   const a = active.points, dest = a[a.length - 1];
   $('route-breadcrumb').innerHTML = `<b>${escapeHtml(a[0].name || 'Start')}</b> → <b>${escapeHtml(dest.name || 'End')}</b>`;
-  $('route-warning').innerHTML = ''; $('route-log').innerHTML = '';
+  $('route-warning').innerHTML = ''; $('route-stoppages').innerHTML = ''; $('route-log').innerHTML = '';
+  $('route-summary').innerHTML = `
+    <div class="stats">
+      <div class="stat"><span class="big" id="trk-togo">–</span><span class="lbl">to go</span></div>
+      <div class="stat"><span class="big" id="trk-remaining">–</span><span class="lbl">remaining</span></div>
+      <div class="stat"><span class="big" id="trk-eta">–</span><span class="lbl">ETA</span></div>
+      <div class="stat"><span class="big" id="trk-underway">–</span><span class="lbl">underway</span></div>
+    </div>
+    <p class="muted small" id="trk-speed">Waiting for your location…</p>
+    <p class="muted small" id="trk-off" hidden>You look off the planned route — ETA may drift.</p>
+    <div class="trk-actions">
+      <button id="trk-compass" class="ghost ${compassOn ? 'on' : ''}" title="Face direction of travel / back to north">🧭 Heading-up</button>
+      <button id="btn-end" class="primary">Arrived / end journey</button>
+    </div>`;
+  $('route-facilities').innerHTML = '';
+  $('btn-end').onclick = () => endJourney(false);
+  $('trk-compass').onclick = () => setCompass(!compassOn);
+  showPanel();
+  updateTrackingNumbers(lastProg);
+}
+// Lightweight per-fix update: text only, no rebuild, no collapse change.
+function updateTrackingNumbers(prog) {
+  if (panelView !== 'tracking' || !active) return;
+  const elapsed = (Date.now() - active.startedAt) / 3600000;
   if (prog) {
     const arr = new Date(Date.now() + prog.remHours * 3600000).toTimeString().slice(0, 5);
     const st = trackStats();
     const avg = elapsed > 0 ? prog.coveredMi / elapsed : 0;
     summaryText = `🛶 ${prog.remainingMiles.toFixed(1)} mi to go · arrive ~${arr}`;
-    $('route-summary').innerHTML = `
-      <div class="stats">
-        <div class="stat"><span class="big">${prog.remainingMiles.toFixed(1)}<small>mi</small></span><span class="lbl">to go</span></div>
-        <div class="stat"><span class="big">${formatDuration(prog.remHours)}</span><span class="lbl">remaining</span></div>
-        <div class="stat"><span class="big">${arr}</span><span class="lbl">ETA</span></div>
-        <div class="stat"><span class="big">${formatDuration(elapsed)}</span><span class="lbl">underway</span></div>
-      </div>
-      <p class="muted small">Now ${st.cur.toFixed(1)} mph · avg ${avg.toFixed(1)} mph · ${st.distMi.toFixed(1)} mi travelled${prog.locksAhead ? ` · ${prog.locksAhead} lock${prog.locksAhead === 1 ? '' : 's'} ahead` : ''}.</p>
-      ${prog.off > 150 ? '<p class="muted small">You look off the planned route — ETA may drift.</p>' : ''}
-      <button id="btn-end" class="primary">Arrived / end journey</button>`;
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    set('trk-togo', prog.remainingMiles.toFixed(1)); set('trk-remaining', formatDuration(prog.remHours));
+    set('trk-eta', arr); set('trk-underway', formatDuration(elapsed));
+    set('trk-speed', `Now ${st.cur.toFixed(1)} mph · avg ${avg.toFixed(1)} mph · ${st.distMi.toFixed(1)} mi travelled${prog.locksAhead ? ` · ${prog.locksAhead} lock${prog.locksAhead === 1 ? '' : 's'} ahead` : ''}.`);
+    const off = $('trk-off'); if (off) off.hidden = !(prog.off > 150);
   } else {
     summaryText = '🛶 Journey under way — waiting for GPS…';
-    $('route-summary').innerHTML = '<p class="muted small">Waiting for your location…</p><button id="btn-end" class="primary">End journey</button>';
   }
-  $('btn-end').onclick = () => endJourney(false);
-  showPanel(); setCollapsed(true);
+  if ($('panel').classList.contains('collapsed')) $('route-title').innerHTML = escapeHtml(summaryText);
 }
 function endJourney(arrived) {
   if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
@@ -424,7 +451,9 @@ function endJourney(arrived) {
   active = null; localStorage.removeItem(ACTIVE_KEY);
   liveMarker?.remove(); liveMarker = null;
   setTrail(map, null);
-  if (lastRoute) renderSummary(lastRoute);
+  lastProg = null;
+  if (compassOn) setCompass(false); // back to north-up when the journey's over
+  if (lastRoute) renderSummary(lastRoute); else { panelView = null; $('panel').classList.add('hidden'); document.body.classList.remove('panel-open'); }
 }
 // On reload, pick up a journey that's still under way.
 async function resumeActiveJourney() {
@@ -504,19 +533,25 @@ function renderMarkers() {
   updateUndoIcon();
 }
 
-// Undo = remove the last point (clearing whole-journey lives on the search bar now).
+// One two-in-one button: undo the last stop when there's a route, broom/clear
+// everything when there's 0–1 points (or a preview open).
 function updateUndoIcon() {
-  $('btn-undo').textContent = '↶';
-  $('btn-undo').style.display = points.length ? '' : 'none';
-  const clear = $('search-clear'); if (clear) clear.style.display = (points.length || preview) ? '' : 'none';
+  $('btn-undo').textContent = points.length >= 2 ? '↶' : '🧹';
+  $('btn-undo').title = points.length >= 2 ? 'Undo last stop' : 'Clear';
+  $('btn-undo').style.display = (points.length || preview) ? '' : 'none';
 }
-function undoLast() { if (points.length) removeStop(points.length - 1); }
+function undoOrClear() {
+  if (preview) { previewBack(); return; }     // back out of a previewed place first
+  if (points.length >= 2) { removeStop(points.length - 1); return; } // undo last stop
+  reset();                                      // 0–1 points → clear it all
+}
 function reset() {
   points = []; lastRoute = null; clearPreview(); renderMarkers();
   clearRouteOnly(); $('search').value = ''; popup?.remove();
   promptForStart();
 }
 function clearRouteOnly() {
+  panelView = null;
   setRoute(map, null); setRouteFacilities(map, null); setRouteLocks(map, null); setStoppages(map, []);
   $('route-stoppages').innerHTML = ''; $('route-log').innerHTML = '';
   $('panel').classList.add('hidden');
@@ -548,7 +583,6 @@ const getLayerPrefs = () => { try { return JSON.parse(localStorage.getItem(LAYER
 function buildLegend() {
   $('legend-body').innerHTML = POI_CATS.map((c) => `<button type="button" class="leg-row" data-cat="${c.id}"><span class="leg-emoji">${c.emoji}</span><span class="leg-label">${escapeHtml(c.label)}</span></button>`).join('');
   $('legend-body').querySelectorAll('.leg-row[data-cat]').forEach((el) => { el.onclick = () => toggleCat(el.dataset.cat); });
-  $('legend-head').onclick = () => $('legend').classList.toggle('legend-closed');
   applyLayerPrefs();
 }
 function toggleCat(id) {
@@ -628,10 +662,11 @@ function applyRoute(r, fit) {
   setHint(''); // a journey's set now — clear the "tap to set destination" prompt
   setRoute(map, r.coords); setRouteFacilities(map, r.facilities); setRouteLocks(map, r.routeLocks);
   if (fit) fitRoute(map, r.coords);
-  renderSummary(r);
+  if (active) renderTracking(); else renderSummary(r); // keep the live view while under way
 }
 
 function renderSummary(r) {
+  panelView = 'journey';
   const s = getSettings();
   const est = estimate(r.miles, r.locks, s, { bendFactor: r.bendFactor });
   const miles = Math.floor(r.miles);
@@ -704,6 +739,7 @@ function renderSummary(r) {
 // Nearest boater services from the start point — shown in the collapsed bar with
 // emoji + a direction arrow + distance/locks, with a detailed list when expanded.
 function renderStartFacilities(facs) {
+  panelView = 'services';
   panelTitle = 'Nearest facilities';
   const seen = new Set(); const bits = [];
   for (const f of facs) {
@@ -931,6 +967,7 @@ function lockDwellTimes(track, routeLocks) {
 function deleteHistory(id) { saveHistory(getHistory().filter((x) => x.id !== id)); renderRecents(); }
 function showHistoryDetail(id) {
   const h = getHistory().find((x) => x.id === id); if (!h) return;
+  panelView = 'history';
   hideResults(); searchInput.value = ''; searchInput.blur();
   if (h.track?.length) { setTrail(map, h.track.map((p) => [p.lng, p.lat])); fitRoute(map, h.track.map((p) => [p.lng, p.lat])); }
   panelTitle = 'Past journey';
@@ -1220,7 +1257,8 @@ $('panel-header').onclick = () => setCollapsed(!$('panel').classList.contains('c
 function showError(t) { setHint(`<span class="err">${escapeHtml(t)}</span>`); }
 
 // --- toolbar ---
-$('btn-undo').onclick = undoLast;
+$('btn-undo').onclick = undoOrClear;
+updateUndoIcon(); // set its icon/visibility for the empty initial state
 function askForLocation() {
   try { map?._geolocate?.trigger(); } catch { /* needs gesture */ }
   // A one-shot getCurrentPosition is more reliable than the control's
@@ -1253,9 +1291,7 @@ function locateMe() {
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
   );
 }
-// locate + clear now live on the search bar (issue #13)
-$('search-locate').onclick = locateMe;
-$('search-clear').onclick = () => { clearPreview(); reset(); };
+$('search-locate').onclick = locateMe; // find-me lives on the search bar; clear is back on the undo button
 
 // --- compass: rotate the map to face the way the device points (toggle) ---
 let compassOn = false, orientEvt = null, smoothBearing = 0;
@@ -1275,7 +1311,7 @@ function onOrient(e) {
 }
 function setCompass(on) {
   compassOn = on;
-  $('btn-compass').classList.toggle('on', on);
+  $('trk-compass')?.classList.toggle('on', on); // the toggle lives in the tracking bar
   if (on) {
     const begin = () => { orientEvt = ('ondeviceorientationabsolute' in window) ? 'deviceorientationabsolute' : 'deviceorientation'; smoothBearing = map.getBearing(); window.addEventListener(orientEvt, onOrient, true); setStatus(t('Steady as she goes — facing yer heading ⚓', 'Map faces your heading')); setTimeout(() => setStatus(''), 2500); };
     const Dev = window.DeviceOrientationEvent;
@@ -1287,9 +1323,14 @@ function setCompass(on) {
     map.easeTo({ bearing: 0, duration: 400 }); // back to north-up
   }
 }
-$('btn-compass').onclick = () => setCompass(!compassOn);
 
-// --- settings ---
+// --- settings (tabbed: Settings + Map key) ---
+document.querySelectorAll('#settings .tab').forEach((tab) => {
+  tab.onclick = () => {
+    document.querySelectorAll('#settings .tab').forEach((b) => b.classList.toggle('on', b === tab));
+    document.querySelectorAll('#settings .tabpanel').forEach((pan) => pan.classList.toggle('hidden', pan.dataset.panel !== tab.dataset.tab));
+  };
+});
 $('btn-settings').onclick = () => {
   const s = getSettings();
   $('set-speed').value = s.speedMph; $('set-lock').value = s.lockMinutes; $('set-hours').value = s.hoursPerDay;
