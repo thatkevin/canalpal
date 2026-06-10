@@ -271,14 +271,17 @@ function previewAdd() {
 }
 function renderPreviewCard() {
   const { p, index } = preview;
-  const total = points.length + 1;
-  const where = total === 2 ? 'as your destination' : `as stop ${index + 1} of ${total}`;
+  // describe where it lands, rather than an opaque "stop N of M": between the two
+  // stops it falls between, or as the new destination at the end.
+  const where = index < points.length
+    ? `between ${escapeHtml(points[index - 1].name || 'start')} and ${escapeHtml(points[index].name || 'the next stop')}`
+    : 'as your destination';
   panelTitle = 'Add a stop?';
   summaryText = `📍 ${p.name || 'Place'} — add to route?`;
   $('route-breadcrumb').innerHTML = `<b>📍 ${escapeHtml(p.name || 'Place')}</b>`;
   $('route-warning').innerHTML = '';
   $('route-stoppages').innerHTML = '';
-  $('route-summary').innerHTML = `<p class="muted small">Would slot in ${where} of your journey.</p>
+  $('route-summary').innerHTML = `<p class="muted small">Would slot in ${where}.</p>
     <div class="preview-actions"><button id="pv-back" class="ghost">‹ Back to journey</button><button id="pv-add" class="primary">＋ Add to route</button></div>`;
   $('route-facilities').innerHTML = '';
   $('route-log').innerHTML = '';
@@ -1174,7 +1177,15 @@ function renderSeeds() {
 
 // --- hints + panel ---
 function setStatus(t) { $('status').innerHTML = t; }
-function setHint(t) { const h = $('hint'); h.innerHTML = t; h.classList.toggle('hidden', !t); }
+let hintTimer = null;
+function setHint(t) {
+  const h = $('hint');
+  h.innerHTML = t;
+  h.classList.toggle('hidden', !t);
+  h.classList.remove('fading');
+  clearTimeout(hintTimer);
+  if (t) hintTimer = setTimeout(() => h.classList.add('fading'), 6000); // fade away after a few seconds
+}
 function updateHint() {
   if (points.length === 0) promptForStart();
   else if (points.length === 1) setHint('Tap or search to set your <b>destination</b>.');

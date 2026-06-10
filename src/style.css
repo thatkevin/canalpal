@@ -137,7 +137,9 @@ button, input { font-family: var(--body); }
   background: var(--parch); color: var(--ink); padding: .4rem .9rem;
   border: 2px solid var(--wood); border-radius: 20px; box-shadow: 0 3px 8px rgba(0,0,0,.35);
   font-size: 1.15rem; max-width: 88vw; text-align: center;
+  transition: opacity .8s ease;
 }
+.hint.fading { opacity: 0; pointer-events: none; }
 .hint.hidden { display: none; }
 .hint a { color: var(--red); font-weight: bold; text-decoration: underline; cursor: pointer; }
 .err { color: var(--red); }
