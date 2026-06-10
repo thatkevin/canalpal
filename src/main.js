@@ -118,6 +118,7 @@ async function boot() {
   const stats = await initP;
   ready = true;
   loadLockGroups(); // network's built — group locks into flights and show them
+  resumeActiveJourney(); // pick up a journey that's still under way from a reload
   setStatus(stats ? `${stats.nodes.toLocaleString()} points · ready` : '');
   setTimeout(() => setStatus(''), 2500);
 
@@ -284,6 +285,110 @@ function renderPreviewCard() {
   $('pv-back').onclick = previewBack;
   $('pv-add').onclick = previewAdd;
   showPanel(); setCollapsed(false); // expand so the buttons show
+}
+
+// --- live journey tracking: "Avast — start", live position + ETA, resume on reload ---
+let active = null;        // { points, startedAt, track:[{lng,lat,t}] } — persisted
+let watchId = null;
+let liveMarker = null;
+const ACTIVE_KEY = 'cp.active';
+const ARRIVE_MI = 0.12;   // ~190 m from the destination counts as arrived
+const saveActive = () => { try { localStorage.setItem(ACTIVE_KEY, JSON.stringify(active)); } catch { /* quota */ } };
+const getActive = () => { try { return JSON.parse(localStorage.getItem(ACTIVE_KEY) || 'null'); } catch { return null; } };
+
+function startJourney() {
+  if (!lastRoute || points.length < 2) return;
+  active = { points: points.map(({ lng, lat, name, id }) => ({ lng, lat, name, id: id || '' })), startedAt: Date.now(), track: [] };
+  saveActive(); beginWatch(); renderTracking();
+}
+function beginWatch() {
+  if (!navigator.geolocation) { setStatus('No location on this device'); setTimeout(() => setStatus(''), 3000); return; }
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition(onFix,
+    (e) => { setStatus('Location: ' + e.message); setTimeout(() => setStatus(''), 3000); },
+    { enableHighAccuracy: true, maximumAge: 4000, timeout: 20000 });
+}
+function onFix(pos) {
+  if (!active) return;
+  const p = { lng: pos.coords.longitude, lat: pos.coords.latitude, t: Date.now() };
+  active.track.push(p);
+  if (active.track.length > 5000) active.track.splice(0, active.track.length - 5000);
+  saveActive();
+  if (liveMarker) liveMarker.setLngLat([p.lng, p.lat]);
+  else { const el = document.createElement('div'); el.className = 'wp wp-live'; el.innerHTML = '<span>⛵</span>'; liveMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(map); }
+  const prog = routeProgress(p);
+  renderTracking(prog);
+  if (prog && prog.remainingMiles <= ARRIVE_MI) endJourney(true);
+}
+// Project the current position onto the planned polyline → distance covered, so
+// remaining distance + ETA update as you go.
+function routeProgress(p) {
+  const coords = lastRoute?.coords; if (!coords || coords.length < 2) return null;
+  let best = Infinity, coveredM = 0, cum = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const a = coords[i - 1], b = coords[i];
+    const cosLat = Math.cos(((a[1] + b[1]) / 2) * Math.PI / 180);
+    const ax = a[0] * cosLat, ay = a[1], bx = b[0] * cosLat, by = b[1], px = p.lng * cosLat, py = p.lat;
+    const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+    let tt = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0; tt = Math.max(0, Math.min(1, tt));
+    const segLen = metres(a[0], a[1], b[0], b[1]);
+    const d = metres(p.lng, p.lat, (ax + tt * dx) / cosLat, ay + tt * dy);
+    if (d < best) { best = d; coveredM = cum + tt * segLen; }
+    cum += segLen;
+  }
+  const total = lastRoute.miles, coveredMi = coveredM / 1609.344, remaining = Math.max(0, total - coveredMi);
+  const est = estimate(total, lastRoute.locks, getSettings(), { bendFactor: lastRoute.bendFactor });
+  const pace = total > 0 ? est.hours / total : 0;
+  return { coveredMi, remainingMiles: remaining, remHours: remaining * pace, off: best };
+}
+function renderTracking(prog) {
+  if (!active) return;
+  panelTitle = 'On your way';
+  const elapsed = (Date.now() - active.startedAt) / 3600000;
+  const a = active.points, dest = a[a.length - 1];
+  $('route-breadcrumb').innerHTML = `<b>${escapeHtml(a[0].name || 'Start')}</b> → <b>${escapeHtml(dest.name || 'End')}</b>`;
+  $('route-warning').innerHTML = ''; $('route-log').innerHTML = '';
+  if (prog) {
+    const arr = new Date(Date.now() + prog.remHours * 3600000).toTimeString().slice(0, 5);
+    summaryText = `🛶 ${prog.remainingMiles.toFixed(1)} mi to go · arrive ~${arr}`;
+    $('route-summary').innerHTML = `
+      <div class="stats">
+        <div class="stat"><span class="big">${prog.remainingMiles.toFixed(1)}<small>mi</small></span><span class="lbl">to go</span></div>
+        <div class="stat"><span class="big">${formatDuration(prog.remHours)}</span><span class="lbl">remaining</span></div>
+        <div class="stat"><span class="big">${arr}</span><span class="lbl">ETA</span></div>
+        <div class="stat"><span class="big">${formatDuration(elapsed)}</span><span class="lbl">underway</span></div>
+      </div>
+      ${prog.off > 150 ? '<p class="muted small">You look off the planned route — ETA may drift.</p>' : ''}
+      <button id="btn-end" class="primary">Arrived / end journey</button>`;
+  } else {
+    summaryText = '🛶 Journey under way — waiting for GPS…';
+    $('route-summary').innerHTML = '<p class="muted small">Waiting for your location…</p><button id="btn-end" class="primary">End journey</button>';
+  }
+  $('btn-end').onclick = () => endJourney(false);
+  showPanel(); setCollapsed(true);
+}
+function endJourney(arrived) {
+  if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  if (active) {
+    const actualHours = (Date.now() - active.startedAt) / 3600000;
+    const dest = active.points[active.points.length - 1];
+    const list = getJourneys();
+    list.unshift({ id: 'j' + Date.now(), name: `${active.points[0].name || 'Start'} → ${dest.name || 'End'}`, points: active.points, at: Date.now(), track: active.track, actualHours, arrived });
+    saveJourneys(list);
+    if (arrived && lastRoute) { const est = estimate(lastRoute.miles, lastRoute.locks, getSettings(), { bendFactor: lastRoute.bendFactor }); logTrip({ miles: lastRoute.miles, locks: lastRoute.locks, predictedHours: est.hours, actualHours }); }
+    setStatus(arrived ? t('Arrived — voyage logged ⚓', 'Arrived — journey logged') : 'Journey ended'); setTimeout(() => setStatus(''), 3500);
+  }
+  active = null; localStorage.removeItem(ACTIVE_KEY);
+  liveMarker?.remove(); liveMarker = null;
+  if (lastRoute) renderSummary(lastRoute);
+}
+// On reload, pick up a journey that's still under way.
+async function resumeActiveJourney() {
+  const a = getActive(); if (!a || !a.points || a.points.length < 2) return;
+  active = a; points = a.points.map((p) => ({ ...p })); renderMarkers();
+  await computeRoute();
+  if (!lastRoute) { active = null; localStorage.removeItem(ACTIVE_KEY); return; }
+  beginWatch(); renderTracking();
 }
 
 // With only a start set, show the nearest boater services from there.
@@ -504,8 +609,9 @@ function renderSummary(r) {
     $('route-facilities').innerHTML = '<p class="muted small">No mapped facilities directly on this route.</p>';
   }
 
-  // Save + log buttons at the very bottom of the panel, below "On the way".
-  $('route-log').innerHTML = `<button id="btn-save" class="ghost">💾 Save journey</button><button id="btn-log" class="primary">${t('Log this as a completed voyage…', 'Log this as a completed trip…')}</button>`;
+  // Start / save / log buttons at the very bottom of the panel, below "On the way".
+  $('route-log').innerHTML = `<button id="btn-go" class="primary">${t('⚓ Avast — start journey', '▶ Start journey')}</button><button id="btn-save" class="ghost">💾 Save journey</button><button id="btn-log" class="ghost">${t('Log this as a completed voyage…', 'Log this as a completed trip…')}</button>`;
+  $('btn-go').onclick = startJourney;
   $('btn-save').onclick = saveJourney;
   $('btn-log').onclick = () => logTripFlow(r, est);
   showPanel();

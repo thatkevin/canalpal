@@ -261,6 +261,9 @@ dialog menu button[value="save"] { background: var(--teal); color: var(--parch);
 .wp-end { background: var(--red); }
 .wp-via { background: var(--brass); }
 .wp-via span { color: var(--ink); text-shadow: none; }
+/* live position while a journey is under way (#tracking) */
+.wp-live { background: #1565a8; border-color: #fff; animation: pv-pulse 1.4s ease-in-out infinite; }
+.wp-live span { font-size: 1rem; }
 /* a place being previewed before it joins the journey (issue #13) */
 .wp-preview { background: #6b4fa0; border-style: dashed; animation: pv-pulse 1.4s ease-in-out infinite; }
 @keyframes pv-pulse { 0%,100% { box-shadow: 0 0 0 2px var(--wood), 0 2px 5px rgba(0,0,0,.45); } 50% { box-shadow: 0 0 0 6px rgba(107,79,160,.4), 0 2px 5px rgba(0,0,0,.45); } }

@@ -87,8 +87,9 @@ const lockLayers = [
     layout: { ...flightLayout },
     paint: { ...lockHalo,
       'icon-opacity': ['interpolate', ['linear'], ['zoom'], T1 - FADE, 0, T1 + FADE, 1, T2 - FADE, 1, T2 + FADE, 0],
-      // tight fine flights overlap — hold their (N) labels back until close enough
-      'text-opacity': ['interpolate', ['linear'], ['zoom'], 11.9, 0, 12.4, 1, T2 - FADE, 1, T2 + FADE, 0] } },
+      // fine (N) labels fade in as the coarse tier hands off (~T1), so there's no
+      // gap of numberless chevrons while zooming in
+      'text-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 11.5, 1, T2 - FADE, 1, T2 + FADE, 0] } },
   // individual locks — fade in from the fine tier at T2
   { id: 'lock-point', type: 'symbol', source: 'locks-all', minzoom: T2 - FADE,
     layout: { 'icon-image': 'ic-lock', 'icon-allow-overlap': true,
