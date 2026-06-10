@@ -33,25 +33,26 @@ console.log('✓ "use current location" offered');
 await page.click('#use-loc');
 await page.waitForFunction(() => /destination/i.test(document.getElementById('hint')?.innerHTML || ''), { timeout: 5000 });
 console.log('✓ current location set as start');
-await page.click('#btn-undo'); // one point set → undo clears it
+await page.click('#search-clear'); // one point set → clear journey
 
 // Drive the app directly via its map (more reliable than synthetic canvas clicks):
-// dispatch two clicks at canal coordinates through MapLibre's project().
+// dispatch clicks at canal coordinates through MapLibre's project(). NB: the
+// first click sets the start; each later place is PREVIEWED, then confirmed via
+// the "Add to route" button (#pv-add) — the preview-then-confirm model (#13).
 const result = await page.evaluate(async () => {
-  // Two points on the Worcester & Birmingham canal near Alvechurch & King's Norton
-  const a = { lng: -1.9717, lat: 52.3486 };
-  const b = { lng: -1.9300, lat: 52.4060 };
-  // find the map instance via the global the app doesn't expose -> simulate clicks
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const a = { lng: -1.9717, lat: 52.3486 };   // Alvechurch (start)
+  const b = { lng: -1.9300, lat: 52.4060 };    // King's Norton (destination)
   const map = window.__map;
   if (!map) return { error: 'no map handle' };
   const click = (ll) => map.fire('click', {
     lngLat: ll, point: map.project(ll),
     originalEvent: { target: map.getCanvas(), preventDefault() {}, stopPropagation() {}, type: 'click' },
   });
-  click(a);
-  await new Promise((r) => setTimeout(r, 300));
-  click(b);
-  await new Promise((r) => setTimeout(r, 5000));
+  click(a); await sleep(400);
+  click(b); await sleep(900);                  // previews b
+  document.getElementById('pv-add')?.click();  // confirm → 2-point route
+  await sleep(4500);
   const panel = document.getElementById('route-summary')?.textContent || '';
   const visible = !document.getElementById('panel').classList.contains('hidden');
   return { panel, visible };
@@ -60,24 +61,24 @@ const result = await page.evaluate(async () => {
 console.log('route result:', JSON.stringify(result));
 
 // --- search ---
-for (let i = 0; i < 3; i++) await page.click('#btn-undo'); // clear any points
+await page.click('#search-clear').catch(() => {}); // clear any points
 await page.fill('#search', 'Tardebigge');
 await page.waitForSelector('#search-results li', { timeout: 5000 });
 const firstResult = (await page.textContent('#search-results li .r-name'))?.trim();
 console.log('✓ search → first result:', firstResult);
 const hasTardebigge = await page.locator('#search-results li', { hasText: 'Tardebigge' }).count();
 
-// --- via points: start -> via -> end, 3-point route ---
+// --- via points: start -> via -> end, confirming each previewed stop ---
 const via = await page.evaluate(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const map = window.__map;
   const click = (ll) => map.fire('click', { lngLat: ll, point: map.project(ll), originalEvent: { target: map.getCanvas(), preventDefault() {}, stopPropagation() {}, type: 'click' } });
-  for (let i = 0; i < 3; i++) document.getElementById('btn-undo').click();
-  click({ lng: -2.0680, lat: 52.3090 }); // Tardebigge top area
-  await new Promise((r) => setTimeout(r, 200));
-  click({ lng: -1.9717, lat: 52.3486 }); // Alvechurch (via)
-  await new Promise((r) => setTimeout(r, 1200));
-  click({ lng: -1.9300, lat: 52.4060 }); // King's Norton (end)
-  await new Promise((r) => setTimeout(r, 2000));
+  document.getElementById('search-clear')?.click();
+  click({ lng: -2.0680, lat: 52.3090 }); await sleep(400);             // Tardebigge top (start)
+  click({ lng: -1.9717, lat: 52.3486 }); await sleep(900);            // Alvechurch (preview)
+  document.getElementById('pv-add')?.click(); await sleep(1800);       // confirm via
+  click({ lng: -1.9300, lat: 52.4060 }); await sleep(900);            // King's Norton (preview)
+  document.getElementById('pv-add')?.click(); await sleep(2500);       // confirm end
   return { title: document.getElementById('route-title').textContent, panel: document.getElementById('route-summary').textContent.replace(/\s+/g, ' ').trim() };
 });
 console.log('✓ via route:', via.title, '—', via.panel.slice(0, 80));

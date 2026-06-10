@@ -103,6 +103,15 @@ button, input { font-family: var(--body); }
   box-shadow: 0 3px 8px rgba(0,0,0,.35); cursor: pointer; font-size: 1.1rem; color: var(--wood); padding: 0;
 }
 .sbtn:active { transform: translateY(1px); }
+/* saved-journey rows in the search dropdown (#8) */
+.jrow { cursor: pointer; }
+.jbtn { background: none; border: none; color: var(--rope); font-size: 1.05rem; line-height: 1; cursor: pointer; padding: 0 .2rem; }
+.jren { margin-left: auto; }
+.jbtn:hover { color: var(--wood); }
+.jdel:hover { color: var(--red); }
+/* save + log buttons stacked at the bottom of the journey panel */
+#route-log { display: flex; flex-direction: column; gap: .5rem; }
+#route-log .primary, #route-log .ghost { width: 100%; }
 #search::placeholder { color: #9b8458; font-style: italic; }
 #search-results {
   list-style: none; margin: .4rem 0 0; padding: 0; background: var(--parch);

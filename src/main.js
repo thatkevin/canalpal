@@ -488,8 +488,9 @@ function renderSummary(r) {
     $('route-facilities').innerHTML = '<p class="muted small">No mapped facilities directly on this route.</p>';
   }
 
-  // Log button lives at the very bottom of the panel, below "On the way".
-  $('route-log').innerHTML = `<button id="btn-log" class="primary">${t('Log this as a completed voyage…', 'Log this as a completed trip…')}</button>`;
+  // Save + log buttons at the very bottom of the panel, below "On the way".
+  $('route-log').innerHTML = `<button id="btn-save" class="ghost">💾 Save journey</button><button id="btn-log" class="primary">${t('Log this as a completed voyage…', 'Log this as a completed trip…')}</button>`;
+  $('btn-save').onclick = saveJourney;
   $('btn-log').onclick = () => logTripFlow(r, est);
   showPanel();
 }
@@ -703,6 +704,50 @@ function hideResults() { $('search-results').classList.add('hidden'); }
 document.addEventListener('click', (e) => { if (!e.target.closest('#searchbar')) hideResults(); });
 
 // --- recent + starred searches (last 50; starred kept forever) ---
+// --- saved journeys (#8): named, ordered waypoint lists in localStorage ---
+const JOURNEY_KEY = 'cp.journeys';
+const getJourneys = () => { try { return JSON.parse(localStorage.getItem(JOURNEY_KEY) || '[]'); } catch { return []; } };
+const saveJourneys = (a) => localStorage.setItem(JOURNEY_KEY, JSON.stringify(a));
+function saveJourney() {
+  if (points.length < 2) return;
+  const def = `${points[0].name || 'Start'} → ${points[points.length - 1].name || 'End'}`;
+  const name = prompt('Name this journey:', def);
+  if (name == null) return;
+  const a = getJourneys();
+  a.unshift({ id: 'j' + Date.now(), name: name.trim() || def, points: points.map(({ lng, lat, name, id }) => ({ lng, lat, name, id: id || '' })), at: Date.now() });
+  saveJourneys(a);
+  setStatus(t('Voyage saved aboard ⚓', 'Journey saved')); setTimeout(() => setStatus(''), 2500);
+}
+// Load (re-open) a saved journey so it can be sailed or edited (drag/add/remove).
+function loadJourney(id) {
+  const j = getJourneys().find((x) => x.id === id); if (!j) return;
+  hideResults(); searchInput.value = ''; searchInput.blur();
+  clearPreview();
+  points = j.points.map((p) => ({ ...p }));
+  renderMarkers();
+  if (points.length >= 2) computeRoute();
+  else if (points.length === 1) { lastRoute = null; setRoute(map, null); setRouteLocks(map, null); requestServices(); updateHint(); }
+  if (points.length) map.flyTo({ center: [points[0].lng, points[0].lat], zoom: 12 });
+}
+function renameJourney(id) {
+  const a = getJourneys(); const j = a.find((x) => x.id === id); if (!j) return;
+  const n = prompt('Rename journey:', j.name); if (n == null) return;
+  j.name = n.trim() || j.name; saveJourneys(a); renderRecents();
+}
+function deleteJourney(id) { saveJourneys(getJourneys().filter((x) => x.id !== id)); renderRecents(); }
+function savedRowsHtml(saved) {
+  return saved.length ? '<li class="rec-head">Saved journeys</li>' + saved.map((j) =>
+    `<li class="rec jrow" data-jid="${j.id}"><span class="r-name">⚓ ${escapeHtml(j.name)}</span><span class="r-type">${j.points.length} stops</span><button class="jbtn jren" title="Rename">✎</button><button class="jbtn jdel" title="Delete">✕</button></li>`).join('') : '';
+}
+function wireSavedRows() {
+  $('search-results').querySelectorAll('.jrow').forEach((li) => {
+    const id = li.dataset.jid;
+    li.onclick = (e) => { if (e.target.closest('.jbtn')) return; loadJourney(id); };
+    li.querySelector('.jren').onclick = (e) => { e.stopPropagation(); renameJourney(id); };
+    li.querySelector('.jdel').onclick = (e) => { e.stopPropagation(); deleteJourney(id); };
+  });
+}
+
 const SEARCH_KEY = 'cp.searches';
 const getSearches = () => { try { return JSON.parse(localStorage.getItem(SEARCH_KEY) || '[]'); } catch { return []; } };
 const saveSearches = (a) => localStorage.setItem(SEARCH_KEY, JSON.stringify(a));
@@ -742,29 +787,35 @@ function resolveSeed(s) {
   for (const g of gazetteer) { if (g.name.toLowerCase().startsWith(q) && (!best || g.name.length < best.name.length)) best = g; }
   return best || gazetteer.find((g) => g.name.toLowerCase().includes(q)) || null;
 }
-function renderSeeds() {
-  const ul = $('search-results');
-  if (!gazetteer.length) { hideResults(); return; } // gazetteer not loaded yet
-  const seen = new Set();
-  const seeds = SEED_PLACES.map(resolveSeed).filter((g) => g && !seen.has(g.id) && seen.add(g.id));
-  if (!seeds.length) { hideResults(); return; }
-  ul.innerHTML = '<li class="rec-head">Popular places</li>' + seeds.map(() => '<li class="rec"></li>').join('');
-  [...ul.querySelectorAll('.rec')].forEach((li, i) => { const p = seeds[i]; li.innerHTML = resultRow(p); li.onclick = () => selectResult(p); });
-  ul.classList.remove('hidden');
-}
+// First-run / empty-focus dropdown: saved journeys, then recents (or, with no
+// recents, popular landmarks).
 function renderRecents() {
-  const a = getSearches();
   const ul = $('search-results');
-  if (!a.length) { renderSeeds(); return; }
+  const saved = getJourneys();
+  const a = getSearches();
+  if (!saved.length && !a.length) { renderSeeds(); return; }
   const sorted = [...a].sort((x, y) => (y.star ? 1 : 0) - (x.star ? 1 : 0)); // starred first
-  ul.innerHTML = '<li class="rec-head">Recent &amp; saved</li>' + sorted.map(() => '<li class="rec"></li>').join('');
-  const rows = [...ul.querySelectorAll('.rec')];
-  rows.forEach((li, i) => {
+  ul.innerHTML = savedRowsHtml(saved)
+    + (a.length ? '<li class="rec-head">Recent &amp; saved</li>' + sorted.map(() => '<li class="rec srow"></li>').join('') : '');
+  wireSavedRows();
+  [...ul.querySelectorAll('.srow')].forEach((li, i) => {
     const p = sorted[i];
     li.innerHTML = `${resultRow(p)}<button class="star ${p.star ? 'on' : ''}" title="${p.star ? 'Saved' : 'Save forever'}">${p.star ? '★' : '☆'}</button>`;
     li.onclick = (e) => { if (e.target.closest('.star')) return; selectResult(p); };
     li.querySelector('.star').onclick = (e) => { e.stopPropagation(); toggleStar(p); renderRecents(); };
   });
+  ul.classList.remove('hidden');
+}
+function renderSeeds() {
+  const ul = $('search-results');
+  const saved = getJourneys();
+  const seen = new Set();
+  const seeds = gazetteer.length ? SEED_PLACES.map(resolveSeed).filter((g) => g && !seen.has(g.id) && seen.add(g.id)) : [];
+  if (!saved.length && !seeds.length) { hideResults(); return; }
+  ul.innerHTML = savedRowsHtml(saved)
+    + (seeds.length ? '<li class="rec-head">Popular places</li>' + seeds.map(() => '<li class="rec drow"></li>').join('') : '');
+  wireSavedRows();
+  [...ul.querySelectorAll('.drow')].forEach((li, i) => { const p = seeds[i]; li.innerHTML = resultRow(p); li.onclick = () => selectResult(p); });
   ul.classList.remove('hidden');
 }
 
