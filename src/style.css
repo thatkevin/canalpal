@@ -152,6 +152,7 @@ button, input { font-family: var(--body); }
   display: flex; align-items: center; justify-content: center;
 }
 .tool:active { transform: translateY(2px); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.tool.on { background: var(--teal); color: var(--parch); }
 #btn-locate, #btn-settings, #btn-undo { font-family: var(--body); font-size: 1.5rem; }
 
 /* ---- bottom panel (parchment) ---- */

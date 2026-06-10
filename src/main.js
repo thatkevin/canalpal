@@ -1238,6 +1238,38 @@ function locateMe() {
 $('search-locate').onclick = locateMe;
 $('search-clear').onclick = () => { clearPreview(); reset(); };
 
+// --- compass: rotate the map to face the way the device points (toggle) ---
+let compassOn = false, orientEvt = null, smoothBearing = 0;
+function headingFromEvent(e) {
+  if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) return e.webkitCompassHeading; // iOS, true north
+  if (typeof e.alpha === 'number') {
+    const so = (screen.orientation && screen.orientation.angle) || 0; // allow for landscape
+    return (360 - e.alpha + so + 360) % 360;
+  }
+  return null;
+}
+function onOrient(e) {
+  const h = headingFromEvent(e); if (h == null) return;
+  const diff = ((h - smoothBearing + 540) % 360) - 180; // shortest way round
+  smoothBearing = (smoothBearing + diff * 0.25 + 360) % 360; // low-pass the jitter
+  map.setBearing(smoothBearing);
+}
+function setCompass(on) {
+  compassOn = on;
+  $('btn-compass').classList.toggle('on', on);
+  if (on) {
+    const begin = () => { orientEvt = ('ondeviceorientationabsolute' in window) ? 'deviceorientationabsolute' : 'deviceorientation'; smoothBearing = map.getBearing(); window.addEventListener(orientEvt, onOrient, true); setStatus(t('Steady as she goes — facing yer heading ⚓', 'Map faces your heading')); setTimeout(() => setStatus(''), 2500); };
+    const Dev = window.DeviceOrientationEvent;
+    if (Dev && typeof Dev.requestPermission === 'function') { // iOS needs a gesture-time prompt
+      Dev.requestPermission().then((r) => { if (r === 'granted') begin(); else { setCompass(false); setStatus('Compass permission denied'); setTimeout(() => setStatus(''), 3000); } }).catch(() => setCompass(false));
+    } else begin();
+  } else {
+    if (orientEvt) { window.removeEventListener(orientEvt, onOrient, true); orientEvt = null; }
+    map.easeTo({ bearing: 0, duration: 400 }); // back to north-up
+  }
+}
+$('btn-compass').onclick = () => setCompass(!compassOn);
+
 // --- settings ---
 $('btn-settings').onclick = () => {
   const s = getSettings();
