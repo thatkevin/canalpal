@@ -33,7 +33,10 @@ const ROUTES = [
   { name: 'Worcester & Birmingham (Tardebigge top→bottom)', a: 'Tardebigge Top Lock No 58', b: 'Tardebigge Bottom Lock No 29', ref: { mi: 2.5, locks: 30 } },
   { name: 'Worcester & Birmingham (Hanbury Jn→Kings Norton Jn)', a: 'Hanbury Junction', b: "King's Norton Junction", ref: { mi: 15, locks: 42 } },
   { name: 'Stratford Canal (Kings Norton Jn→Stratford)', a: "King's Norton Junction", b: 'Bancroft Basin', ref: { mi: 25.5, locks: 56 } },
-  { name: 'Coventry Canal (Hawkesbury Jn→Fradley Jn)', a: 'Hawkesbury Junction', b: 'Fradley Junction', ref: { mi: 38, locks: 13 } },
+  // NB: the published "38mi / 13 locks" is the WHOLE Coventry Canal, Coventry
+  // Basin→Fradley. Hawkesbury Jn sits 5.5mi north of Coventry Basin, so testing
+  // from there was 6mi short by construction — not a routing fault. (#5)
+  { name: 'Coventry Canal (Coventry Basin→Fradley Jn)', a: 'Coventry Basin', b: 'Fradley Junction', ref: { mi: 38, locks: 13 } },
   { name: 'Oxford Canal (Hawkesbury Jn→Napton Jn)', a: 'Hawkesbury Junction', b: 'Napton Junction', ref: null },
   { name: 'Llangollen (Hurleston Jn→Llangollen)', a: 'Hurleston Junction', b: 'Llangollen Wharf', ref: { mi: 46, locks: 21 } },
 ];
