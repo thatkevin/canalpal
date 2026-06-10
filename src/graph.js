@@ -232,8 +232,10 @@ export class CanalGraph {
     return best;
   }
 
-  // Nearest boater services (water, fuel, elsan, rubbish, pump-out) reachable
-  // along the network from a point, in any direction. One per type.
+  // Nearest boater services reachable along the network from a point. Returns the
+  // nearest of each type in EACH of the two directions along the canal (dir 0/1 =
+  // the two endpoints of the start edge), so the panel can list "this way / that
+  // way" for every type.
   nearestServices(start, opts = {}) {
     const { speedMph = 3, lockMinutes = 12, hoursPerDay = 7, maxDays = 3 } = opts;
     const se = this._nearestEdge(start.lng, start.lat);
@@ -241,34 +243,36 @@ export class CanalGraph {
     const N = this.nodes.length;
     const dist = new Float64Array(N).fill(Infinity);
     const locksTo = new Int32Array(N);
+    const dirOf = new Int8Array(N).fill(-1); // which start-edge endpoint we descend from
     const heap = new MinHeap();
-    dist[se.a] = haversine(se.lng, se.lat, ...this.nodes[se.a]); heap.push(se.a, dist[se.a]);
-    dist[se.b] = haversine(se.lng, se.lat, ...this.nodes[se.b]); heap.push(se.b, dist[se.b]);
+    dist[se.a] = haversine(se.lng, se.lat, ...this.nodes[se.a]); dirOf[se.a] = 0; heap.push(se.a, dist[se.a]);
+    dist[se.b] = haversine(se.lng, se.lat, ...this.nodes[se.b]); dirOf[se.b] = 1; heap.push(se.b, dist[se.b]);
     // distance ceiling for `maxDays` of cruising (locks only make it slower, so
     // this is a safe upper bound); the per-service time check does the rest.
     const maxHours = maxDays * hoursPerDay;
     const maxM = maxHours * speedMph * 1609.344;
     const time = (miles, locks) => miles / speedMph + (locks * lockMinutes) / 60;
-    const found = new Map();
-    let remaining = SERVICE_TYPES.size;
+    const found = new Map();              // `${type}|${dir}` -> nearest such service
+    const remaining = SERVICE_TYPES.size * 2; // nearest of each type, both directions
     let settled = 0;
-    while (heap.size && remaining > 0) {
+    while (heap.size && found.size < remaining) {
       const { node, cost } = heap.pop();
       if (cost > dist[node]) continue;
       if (cost > maxM) break;
-      if (++settled > 80000) break; // bound work when sparse types are never found
+      if (++settled > 120000) break; // bound work when sparse types are never found
 
+      const dir = dirOf[node];
       const facs = this.facByNode.get(node);
       if (facs) for (const f of facs) {
-        if (found.has(f.type)) continue;
+        const key = f.type + '|' + dir;
+        if (found.has(key)) continue;
         const miles = cost / 1609.344, locks = locksTo[node], hrs = time(miles, locks);
         if (hrs > maxHours) continue; // beyond the day budget
-        found.set(f.type, { type: f.type, title: f.title, lng: f.lng, lat: f.lat, miles, locks, hours: hrs, days: Math.max(1, Math.ceil(hrs / hoursPerDay)), bearing: bearing(start.lng, start.lat, f.lng, f.lat) });
-        remaining--;
+        found.set(key, { type: f.type, title: f.title, lng: f.lng, lat: f.lat, dir, miles, locks, hours: hrs, days: Math.max(1, Math.ceil(hrs / hoursPerDay)), bearing: bearing(start.lng, start.lat, f.lng, f.lat) });
       }
       for (const e of this.adj[node]) {
         const nd = cost + e.w;
-        if (nd < dist[e.to]) { dist[e.to] = nd; locksTo[e.to] = locksTo[node] + this.edges[e.edge].locks; heap.push(e.to, nd); }
+        if (nd < dist[e.to]) { dist[e.to] = nd; locksTo[e.to] = locksTo[node] + this.edges[e.edge].locks; dirOf[e.to] = dir; heap.push(e.to, nd); }
       }
     }
     return [...found.values()].sort((a, b) => a.miles - b.miles);

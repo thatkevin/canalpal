@@ -449,10 +449,16 @@ function renderStartFacilities(facs) {
   $('route-warning').innerHTML = '';
   $('route-log').innerHTML = ''; // no completed-voyage button in services-only mode
   $('route-summary').innerHTML = '<p class="muted small">Nearest boater services from here. Tap or search a destination to plan a journey.</p>';
-  $('route-facilities').innerHTML = facs.length
-    ? '<h3>Nearest services</h3>' + facs.map((f, i) =>
-        `<div class="fac" data-fi="${i}"><span class="fac-emoji">${emojiFor(f.type)}</span><span class="fac-name">${escapeHtml(f.type)}</span><span class="fac-mi">${arrowFor(f.bearing)} ${f.miles.toFixed(1)}mi · ${f.locks}lk · ${f.days}d</span></div>`).join('')
-    : '<p class="muted small">No mapped services within ~12 miles.</p>';
+  if (facs.length) {
+    // split into the two ways along the canal, each listing every type by distance
+    const byDir = [[], []];
+    facs.forEach((f, i) => byDir[f.dir === 1 ? 1 : 0].push(i));
+    const facRow = (i) => { const f = facs[i]; return `<div class="fac" data-fi="${i}"><span class="fac-emoji">${emojiFor(f.type)}</span><span class="fac-name">${escapeHtml(f.type)}</span><span class="fac-mi">${arrowFor(f.bearing)} ${f.miles.toFixed(1)}mi · ${f.locks}lk · ${f.days}d</span></div>`; };
+    const section = (idxs) => idxs.length ? `<h3>${arrowFor(facs[idxs[0]].bearing)} ${idxs.length} ${idxs.length === 1 ? 'service' : 'services'} this way</h3>` + idxs.map(facRow).join('') : '';
+    $('route-facilities').innerHTML = section(byDir[0]) + section(byDir[1]);
+  } else {
+    $('route-facilities').innerHTML = '<p class="muted small">No mapped services within ~12 miles.</p>';
+  }
   $('route-facilities').querySelectorAll('.fac').forEach((el) => {
     const f = facs[+el.dataset.fi];
     el.onclick = () => { setCollapsed(true); map.flyTo({ center: [f.lng, f.lat], zoom: 15, offset: [0, -40] }); showPoiPopup({ lng: f.lng, lat: f.lat }, { title: f.title, type: f.type }); };
@@ -639,10 +645,44 @@ function toggleStar(rec) {
   const it = a.find((x) => x.name === rec.name && x.id === rec.id);
   if (it) { it.star = !it.star; saveSearches(a); }
 }
+// First-run: when there are no recents yet, offer well-known boating landmarks.
+// Each is resolved against the loaded gazetteer (by id where the colloquial name
+// differs), and any that don't resolve are silently dropped.
+const SEED_PLACES = [
+  { q: 'Hawkesbury Junction', id: 'c9tv' },
+  { q: 'Braunston Turn' },
+  { q: 'Little Venice' },
+  { q: 'Foxton Bottom Staircase' },
+  { q: 'Caen Hill Flight' },
+  { q: 'Llangollen' },
+  { q: 'Gas Street Basin' },
+  { q: 'Bancroft Basin' },
+  { q: 'Anderton Boat Lift' },
+  { q: 'Bingley Five Rise' },
+  { q: 'Standedge Tunnel' },
+  { q: 'Tardebigge' },
+];
+function resolveSeed(s) {
+  if (s.id) { const g = gazetteer.find((x) => x.id === s.id); if (g) return g; }
+  const q = s.q.toLowerCase();
+  let best = null; // prefer a name that starts with the query, shortest wins
+  for (const g of gazetteer) { if (g.name.toLowerCase().startsWith(q) && (!best || g.name.length < best.name.length)) best = g; }
+  return best || gazetteer.find((g) => g.name.toLowerCase().includes(q)) || null;
+}
+function renderSeeds() {
+  const ul = $('search-results');
+  if (!gazetteer.length) { hideResults(); return; } // gazetteer not loaded yet
+  const seen = new Set();
+  const seeds = SEED_PLACES.map(resolveSeed).filter((g) => g && !seen.has(g.id) && seen.add(g.id));
+  if (!seeds.length) { hideResults(); return; }
+  ul.innerHTML = '<li class="rec-head">Popular places</li>' + seeds.map(() => '<li class="rec"></li>').join('');
+  [...ul.querySelectorAll('.rec')].forEach((li, i) => { const p = seeds[i]; li.innerHTML = resultRow(p); li.onclick = () => selectResult(p); });
+  ul.classList.remove('hidden');
+}
 function renderRecents() {
   const a = getSearches();
   const ul = $('search-results');
-  if (!a.length) { hideResults(); return; }
+  if (!a.length) { renderSeeds(); return; }
   const sorted = [...a].sort((x, y) => (y.star ? 1 : 0) - (x.star ? 1 : 0)); // starred first
   ul.innerHTML = '<li class="rec-head">Recent &amp; saved</li>' + sorted.map(() => '<li class="rec"></li>').join('');
   const rows = [...ul.querySelectorAll('.rec')];
