@@ -28,8 +28,24 @@ export default defineConfig(({ command }) => ({
         // The big offline assets: pmtiles basemap/overlay + the routing data.
         // Cache-first so once fetched they work with no network.
         globPatterns: ['**/*.{js,css,html,json,geojson}'],
+        // The CRT data files are refreshed daily by a GitHub Action that commits
+        // the JSON without rebuilding the app — so they must NOT be precached by
+        // content-hash (installed users would be stuck on the build-time copy).
+        // Served NetworkFirst below instead, so updates land immediately online
+        // and still fall back to cache offline.
+        globIgnores: ['**/data/stoppages.json', '**/data/services.json'],
         maximumFileSizeToCacheInBytes: 80 * 1024 * 1024,
         runtimeCaching: [
+          {
+            // Daily-refreshed CRT data: prefer fresh, fall back to cache offline.
+            urlPattern: ({ url }) => /\/data\/(stoppages|services)\.json$/.test(url.pathname),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'crt-data',
+              networkTimeoutSeconds: 4,
+              expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
           {
             // NB: the .pmtiles archive is downloaded + cached by the app itself
             // (Cache Storage 'cp-archive'), because GitHub Pages ignores Range

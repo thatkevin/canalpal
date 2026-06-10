@@ -25,10 +25,14 @@ jobs:
       - run: npm install --no-save playwright-core playwright pbf@3 @mapbox/vector-tile@1
       - run: npx playwright install --with-deps chromium
       - run: node scripts/fetch-stoppages.mjs
-      - run: node scripts/fetch-csf.mjs && cp public/data/services.json docs/data/services.json
+      # Non-fatal: the CSF scraper depends on a live-scraped Mapbox token, so a
+      # CRT site change must not block the stoppages commit below.
+      - name: Fetch CRT facilities (non-fatal)
+        continue-on-error: true
+        run: node scripts/fetch-csf.mjs && cp public/data/services.json docs/data/services.json
       - name: Commit if changed
         run: |
-          if ! git diff --quiet -- public/data docs/data; then
+          if ! git diff --quiet -- public/data/stoppages.json docs/data/stoppages.json public/data/services.json docs/data/services.json; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add public/data/stoppages.json docs/data/stoppages.json public/data/services.json docs/data/services.json

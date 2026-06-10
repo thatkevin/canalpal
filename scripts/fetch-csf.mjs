@@ -9,7 +9,7 @@
 //
 // Run: node scripts/fetch-csf.mjs   (libs: pbf@3 @mapbox/vector-tile@1)
 import { createRequire } from 'module';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
@@ -78,7 +78,16 @@ for (const s of byId.values()) {
   if (!type) { skipped.add(s.ft); continue; }
   out.push({ lng: s.lng, lat: s.lat, type, title: s.desc || type });
 }
-writeFileSync(join(root, 'public', 'data', 'services.json'), JSON.stringify(out));
+// Guard: a rotated token, a Referer rejection, or a Mapbox outage makes every
+// tile fetch soft-fail and leaves `out` empty. Writing that would commit an empty
+// file over ~1,800 good records. Refuse to write an empty or sharply-regressed
+// result — fail loudly so CI doesn't silently wipe the data.
+const outPath = join(root, 'public', 'data', 'services.json');
+let prev = [];
+try { prev = JSON.parse(readFileSync(outPath, 'utf8')); } catch { /* first run — no prior file */ }
+if (out.length < 100 || out.length < prev.length * 0.5)
+  throw new Error(`Refusing to write services.json: ${out.length} facilities (previous ${prev.length}) — likely a token or tile-fetch failure.`);
+writeFileSync(outPath, JSON.stringify(out));
 const counts = {};
 for (const s of out) counts[s.type] = (counts[s.type] || 0) + 1;
 console.log('services:', out.length, counts);

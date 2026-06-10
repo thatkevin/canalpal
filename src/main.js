@@ -34,7 +34,7 @@ const FACILITY_EMOJI = {
   'Water point': '🚰', 'Fuel / diesel': '⛽', 'Elsan / chemical toilet': '🚽', 'Pump-out': '🚽',
   'Sanitary station': '🚽', 'Rubbish disposal': '🗑️', 'Recycling': '♻️',
   'Shop': '🛒', 'Supermarket': '🛒', 'General store': '🛒', 'Store': '🛒', 'DIY / hardware': '🔧',
-  'Pharmacy': '💊', 'Laundry': '🧺', 'Toilets': '🚻', 'Mooring': '⚓', 'Visitor mooring': '⚓', 'Boatyard': '🛥️',
+  'Pharmacy': '💊', 'Laundry': '🧺', 'Shower': '🚿', 'Toilets': '🚻', 'Mooring': '⚓', 'Visitor mooring': '⚓', 'Boatyard': '🛥️',
 };
 const emojiFor = (t) => FACILITY_EMOJI[t] || '📍';
 const SERVICE_EMOJI = FACILITY_EMOJI;
