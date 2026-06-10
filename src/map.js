@@ -56,29 +56,38 @@ const catLayers = POI_CATS.map((c) => ({
 // Locks: always on, monochrome (black & white, as in life), prominent. Flights
 // (consecutive locks on one stretch) are pre-grouped in the routing graph and
 // drawn as a single downstream arrow with the lock count beside it — e.g. ❯(7).
-const LOCK_SPLIT = 14; // zoom at which flights break into individual locks
+// Flights break into individual locks across this zoom band: the flight marker
+// fades out and the individual locks fade in, so the split is a smooth cross-fade
+// rather than a pop. Lowered so flights separate sooner.
+const SPLIT_LO = 12.5, SPLIT_HI = 13.4;
 const lockLayers = [
   // zoomed out: one marker per flight — a bolder triple chevron for a stretch of
   // locks (count > 1) or the plain double chevron for a single lock, with the
   // lock count beside it: ❯(7).
-  { id: 'lock-flight', type: 'symbol', source: 'locks', minzoom: 8, maxzoom: LOCK_SPLIT,
+  { id: 'lock-flight', type: 'symbol', source: 'locks', minzoom: 8, maxzoom: SPLIT_HI,
     layout: {
       'icon-image': ['case', ['>', ['get', 'count'], 1], 'ic-lock-flight', 'ic-lock'], 'icon-allow-overlap': true,
       'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map',
-      // base size by zoom, nudged up ~12% for every 5 locks in the flight
-      'icon-size': ['*',
-        ['interpolate', ['linear'], ['zoom'], 9, 0.6, 13, 0.95],
-        ['+', 1, ['*', 0.12, ['floor', ['/', ['-', ['get', 'count'], 1], 5]]]]],
+      // base size by zoom, each stop scaled up ~12% per 5 locks. NB: ['zoom']
+      // must stay the top-level interpolate input — scale the OUTPUTS by count,
+      // never nest the zoom interpolate inside another expression.
+      'icon-size': ['interpolate', ['linear'], ['zoom'],
+        9, ['*', 0.6, ['+', 1, ['*', 0.12, ['floor', ['/', ['-', ['get', 'count'], 1], 5]]]]],
+        13, ['*', 0.95, ['+', 1, ['*', 0.12, ['floor', ['/', ['-', ['get', 'count'], 1], 5]]]]]],
       'text-field': ['case', ['>', ['get', 'count'], 1], ['concat', '(', ['to-string', ['get', 'count']], ')'], ''],
       'text-font': ['Open Sans Regular'], 'text-size': 13, 'text-offset': [1.1, 0], 'text-anchor': 'left',
       'text-allow-overlap': true, 'text-optional': true,
     },
-    paint: { 'text-color': '#111', 'text-halo-color': '#fff', 'text-halo-width': 1.6 } },
-  // zoomed in: every individual lock as its own downstream arrow
-  { id: 'lock-point', type: 'symbol', source: 'locks-all', minzoom: LOCK_SPLIT,
+    paint: { 'text-color': '#111', 'text-halo-color': '#fff', 'text-halo-width': 1.6,
+      'icon-opacity': ['interpolate', ['linear'], ['zoom'], SPLIT_LO, 1, SPLIT_HI, 0],
+      'text-opacity': ['interpolate', ['linear'], ['zoom'], SPLIT_LO, 1, SPLIT_HI, 0] } },
+  // zoomed in: every individual lock as its own downstream arrow, fading in as the
+  // flight marker fades out
+  { id: 'lock-point', type: 'symbol', source: 'locks-all', minzoom: SPLIT_LO,
     layout: { 'icon-image': 'ic-lock', 'icon-allow-overlap': true,
       'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map',
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.7, 16, 1.15] } },
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.7, 16, 1.15] },
+    paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], SPLIT_LO, 0, SPLIT_HI, 1] } },
 ];
 
 // Draw an emoji centred in a coloured disc and register it as a map image.
