@@ -408,9 +408,13 @@ function endJourney(arrived) {
   if (active) {
     const actualHours = (Date.now() - active.startedAt) / 3600000;
     const dest = active.points[active.points.length - 1];
-    const list = getJourneys();
-    list.unshift({ id: 'j' + Date.now(), name: `${active.points[0].name || 'Start'} → ${dest.name || 'End'}`, points: active.points, at: Date.now(), track: active.track, actualHours, arrived });
-    saveJourneys(list);
+    // record it in the journey history with estimated per-lock dwell times
+    const hist = getHistory();
+    hist.unshift({ id: 'h' + Date.now(), name: `${active.points[0].name || 'Start'} → ${dest.name || 'End'}`,
+      points: active.points, startedAt: active.startedAt, at: Date.now(), arrived, actualHours,
+      miles: lastRoute?.miles || 0, locks: lastRoute?.locks || 0, track: active.track,
+      lockTimes: lockDwellTimes(active.track, lastRoute?.routeLocks) });
+    saveHistory(hist);
     if (arrived && lastRoute) { const est = estimate(lastRoute.miles, lastRoute.locks, getSettings(), { bendFactor: lastRoute.bendFactor }); logTrip({ miles: lastRoute.miles, locks: lastRoute.locks, predictedHours: est.hours, actualHours }); }
     setStatus(arrived ? t('Arrived — voyage logged ⚓', 'Arrived — journey logged') : 'Journey ended'); setTimeout(() => setStatus(''), 3500);
   }
@@ -906,6 +910,61 @@ document.addEventListener('click', (e) => { if (!e.target.closest('#searchbar'))
 const JOURNEY_KEY = 'cp.journeys';
 const getJourneys = () => { try { return JSON.parse(localStorage.getItem(JOURNEY_KEY) || '[]'); } catch { return []; } };
 const saveJourneys = (a) => localStorage.setItem(JOURNEY_KEY, JSON.stringify(a));
+
+// completed journeys (the record): when, how long, the track + estimated lock times
+const HISTORY_KEY = 'cp.history';
+const getHistory = () => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; } };
+const saveHistory = (a) => localStorage.setItem(HISTORY_KEY, JSON.stringify(a));
+// Estimated minutes spent at each lock: the span of track time within ~70 m of it
+// (guesswork — a boat dwells near a lock while working it).
+function lockDwellTimes(track, routeLocks) {
+  return (routeLocks || []).map((lk) => {
+    let minT = Infinity, maxT = -Infinity, n = 0;
+    for (const p of track) if (metres(p.lng, p.lat, lk.lng, lk.lat) <= 70) { if (p.t < minT) minT = p.t; if (p.t > maxT) maxT = p.t; n++; }
+    return { title: lk.title || 'Lock', minutes: n >= 2 ? (maxT - minT) / 60000 : null };
+  });
+}
+function deleteHistory(id) { saveHistory(getHistory().filter((x) => x.id !== id)); renderRecents(); }
+function showHistoryDetail(id) {
+  const h = getHistory().find((x) => x.id === id); if (!h) return;
+  hideResults(); searchInput.value = ''; searchInput.blur();
+  if (h.track?.length) { setTrail(map, h.track.map((p) => [p.lng, p.lat])); fitRoute(map, h.track.map((p) => [p.lng, p.lat])); }
+  panelTitle = 'Past journey';
+  const dest = h.points[h.points.length - 1];
+  const when = new Date(h.at);
+  const dateStr = `${ddmmyyyy(when.toISOString())} ${when.toTimeString().slice(0, 5)}`;
+  summaryText = `${h.points[0].name || 'Start'} → ${dest.name || 'End'} · ${dateStr} · ${formatDuration(h.actualHours)}`;
+  $('route-breadcrumb').innerHTML = `<b>${escapeHtml(h.points[0].name || 'Start')}</b> → <b>${escapeHtml(dest.name || 'End')}</b>`;
+  $('route-warning').innerHTML = ''; $('route-stoppages').innerHTML = '';
+  $('route-summary').innerHTML = `
+    <div class="stats">
+      <div class="stat"><span class="big">${(h.miles || 0).toFixed(1)}<small>mi</small></span><span class="lbl">distance</span></div>
+      <div class="stat"><span class="big">${h.locks || 0}</span><span class="lbl">locks</span></div>
+      <div class="stat"><span class="big">${formatDuration(h.actualHours)}</span><span class="lbl">took</span></div>
+      <div class="stat"><span class="big">${when.toTimeString().slice(0, 5)}</span><span class="lbl">${ddmmyyyy(when.toISOString())}</span></div>
+    </div>
+    <button id="hist-back" class="ghost">‹ Back</button>`;
+  const lt = (h.lockTimes || []).filter((l) => l.minutes != null);
+  $('route-facilities').innerHTML = lt.length
+    ? `<h3>Time at locks (estimated)</h3>` + lt.map((l) => `<div class="fac"><span class="fac-emoji">⚓</span><span class="fac-name">${escapeHtml(l.title)}</span><span class="fac-mi">${Math.max(1, Math.round(l.minutes))} min</span></div>`).join('')
+    : '<p class="muted small">No lock timings recorded for this trip.</p>';
+  $('route-log').innerHTML = '';
+  $('hist-back').onclick = () => { setTrail(map, null); if (lastRoute) renderSummary(lastRoute); else { $('panel').classList.add('hidden'); document.body.classList.remove('panel-open'); } };
+  showPanel(); setCollapsed(false);
+}
+function historyRowsHtml(hist) {
+  return hist.length ? '<li class="rec-head">Past journeys</li>' + hist.map((h) => {
+    const d = new Date(h.at);
+    return `<li class="rec hrow" data-hid="${h.id}"><span class="r-name">${escapeHtml(h.name)}</span><span class="r-type">${ddmmyyyy(d.toISOString())} · ${formatDuration(h.actualHours)}</span><button class="jbtn hdel" title="Delete">✕</button></li>`;
+  }).join('') : '';
+}
+function wireHistoryRows() {
+  $('search-results').querySelectorAll('.hrow').forEach((li) => {
+    const id = li.dataset.hid;
+    li.onclick = (e) => { if (e.target.closest('.jbtn')) return; showHistoryDetail(id); };
+    li.querySelector('.hdel').onclick = (e) => { e.stopPropagation(); deleteHistory(id); };
+  });
+}
 function saveJourney() {
   if (points.length < 2) return;
   const def = `${points[0].name || 'Start'} → ${points[points.length - 1].name || 'End'}`;
@@ -964,6 +1023,14 @@ function exportText() {
   places.length ? places.forEach((p) => L.push('- ' + p.name)) : L.push('- (none)');
   L.push('', 'Saved journeys:');
   journeys.length ? journeys.forEach((j) => L.push('- ' + j.name + ': ' + j.points.map((p) => p.name || 'pin').join(' -> '))) : L.push('- (none)');
+  const hist = getHistory();
+  L.push('', 'Journey history:');
+  if (!hist.length) L.push('- (none)');
+  for (const h of hist) {
+    const d = new Date(h.at);
+    L.push(`- ${h.points.map((p) => p.name || 'pin').join(' -> ')} | ${ddmmyyyy(d.toISOString())} ${d.toTimeString().slice(0, 5)} | ${formatDuration(h.actualHours)}`);
+    for (const l of (h.lockTimes || [])) if (l.minutes != null) L.push(`    ${l.title}: ${Math.max(1, Math.round(l.minutes))} min`);
+  }
   L.push('', 'Settings:', 'Cruising speed: ' + s.speedMph + ' mph', 'Minutes per lock: ' + s.lockMinutes,
     'Cruising hours per day: ' + s.hoursPerDay, 'Theme: ' + (theme === 'gongoozler' ? 'Gongoozler' : 'Pirate'));
   L.push('', 'Map key:');
@@ -973,8 +1040,8 @@ function exportText() {
 function importText(text) {
   const labelToId = {}; for (const c of POI_CATS) labelToId[c.label.toLowerCase()] = c.id;
   const splitKV = (line) => { const i = line.indexOf(':'); return [line.slice(0, i).trim(), line.slice(i + 1).trim()]; };
-  let section = null;
-  const places = [], journeys = [];
+  let section = null, curHist = null;
+  const places = [], journeys = [], history = [];
   const settings = { ...getSettings() }; const prefs = { ...getLayerPrefs() }; let newTheme = theme;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim(); if (!line) continue;
@@ -982,14 +1049,23 @@ function importText(text) {
     if (/^canal pal data/.test(low)) continue;
     if (low === 'saved places:') { section = 'places'; continue; }
     if (low === 'saved journeys:') { section = 'journeys'; continue; }
+    if (low === 'journey history:') { section = 'history'; continue; }
     if (low === 'settings:') { section = 'settings'; continue; }
     if (low === 'map key:') { section = 'mapkey'; continue; }
     if (section === 'places') { const n = line.replace(/^[-•]\s*/, ''); if (n && n !== '(none)') places.push(n); }
     else if (section === 'journeys') { let b = line.replace(/^[-•]\s*/, ''); if (!b || b === '(none)') continue; let name = b, seq = b; const ci = b.indexOf(':'); if (ci > 0) { name = b.slice(0, ci).trim(); seq = b.slice(ci + 1).trim(); } journeys.push({ name, stops: seq.split('->').map((x) => x.trim()).filter(Boolean) }); }
+    else if (section === 'history') {
+      if (/^[-•]/.test(line)) { // entry header: route | date time | duration
+        const b = line.replace(/^[-•]\s*/, ''); if (b === '(none)') { curHist = null; continue; }
+        const [route = '', when = '', dur = ''] = b.split('|').map((x) => x.trim());
+        curHist = { stops: route.split('->').map((x) => x.trim()).filter(Boolean), when, dur, locks: [] };
+        history.push(curHist);
+      } else if (curHist) { const [k, v] = splitKV(line); if (k) curHist.locks.push({ title: k, minutes: parseFloat(v) || null }); }
+    }
     else if (section === 'settings') { const [k, v] = splitKV(line); if (/speed/i.test(k)) settings.speedMph = parseFloat(v) || settings.speedMph; else if (/lock/i.test(k)) settings.lockMinutes = parseFloat(v) || settings.lockMinutes; else if (/hours/i.test(k)) settings.hoursPerDay = parseFloat(v) || settings.hoursPerDay; else if (/theme/i.test(k)) newTheme = /gong/i.test(v) ? 'gongoozler' : 'pirate'; }
     else if (section === 'mapkey') { const [k, v] = splitKV(line); const id = labelToId[k.toLowerCase()]; if (id) prefs[id] = !/hide/i.test(v); }
   }
-  let addedP = 0, addedJ = 0, missed = 0;
+  let addedP = 0, addedJ = 0, addedH = 0, missed = 0;
   if (places.length) {
     const cur = getSearches();
     for (const nm of places) { const g = resolvePlaceByName(nm); if (!g) { missed++; continue; } if (!cur.some((x) => x.id === g.id && x.name === g.name)) { cur.unshift({ name: g.name, lng: g.lng, lat: g.lat, id: g.id || '', layer: g.layer || '', region: g.region || '', star: true, at: Date.now() }); addedP++; } }
@@ -1003,11 +1079,26 @@ function importText(text) {
     });
     saveJourneys(cur);
   }
+  if (history.length) {
+    const cur = getHistory();
+    history.forEach((h, idx) => {
+      const pts = h.stops.map(resolvePlaceByName).map((g) => g ? { lng: g.lng, lat: g.lat, name: g.name, id: g.id || '' } : null).filter(Boolean);
+      if (pts.length < 2) { missed++; return; }
+      let at = Date.now();
+      const m = h.when.match(/(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})/);
+      if (m) at = new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]).getTime();
+      const hM = h.dur.match(/(\d+)\s*hr/), mM = h.dur.match(/(\d+)\s*min/);
+      const actualHours = (hM ? +hM[1] : 0) + (mM ? +mM[1] : 0) / 60;
+      cur.unshift({ id: 'h' + Date.now() + '-' + idx, name: `${pts[0].name} → ${pts[pts.length - 1].name}`, points: pts, at, arrived: true, actualHours, miles: 0, locks: h.locks.length, track: [], lockTimes: h.locks });
+      addedH++;
+    });
+    saveHistory(cur);
+  }
   saveSettings({ speedMph: settings.speedMph, lockMinutes: settings.lockMinutes, hoursPerDay: settings.hoursPerDay });
   theme = newTheme; localStorage.setItem('cp.theme', theme); applyTheme();
   localStorage.setItem(LAYER_KEY, JSON.stringify(prefs)); applyLayerPrefs();
   if (lastRoute) renderSummary(lastRoute);
-  return { addedP, addedJ, missed };
+  return { addedP, addedJ, addedH, missed };
 }
 
 const SEARCH_KEY = 'cp.searches';
@@ -1053,13 +1144,12 @@ function resolveSeed(s) {
 // recents, popular landmarks).
 function renderRecents() {
   const ul = $('search-results');
-  const saved = getJourneys();
-  const a = getSearches();
-  if (!saved.length && !a.length) { renderSeeds(); return; }
+  const saved = getJourneys(), hist = getHistory(), a = getSearches();
+  if (!saved.length && !hist.length && !a.length) { renderSeeds(); return; }
   const sorted = [...a].sort((x, y) => (y.star ? 1 : 0) - (x.star ? 1 : 0)); // starred first
-  ul.innerHTML = savedRowsHtml(saved)
+  ul.innerHTML = savedRowsHtml(saved) + historyRowsHtml(hist)
     + (a.length ? '<li class="rec-head">Recent &amp; saved</li>' + sorted.map(() => '<li class="rec srow"></li>').join('') : '');
-  wireSavedRows();
+  wireSavedRows(); wireHistoryRows();
   [...ul.querySelectorAll('.srow')].forEach((li, i) => {
     const p = sorted[i];
     li.innerHTML = `${resultRow(p)}<button class="star ${p.star ? 'on' : ''}" title="${p.star ? 'Saved' : 'Save forever'}">${p.star ? '★' : '☆'}</button>`;
@@ -1070,13 +1160,13 @@ function renderRecents() {
 }
 function renderSeeds() {
   const ul = $('search-results');
-  const saved = getJourneys();
+  const saved = getJourneys(), hist = getHistory();
   const seen = new Set();
   const seeds = gazetteer.length ? SEED_PLACES.map(resolveSeed).filter((g) => g && !seen.has(g.id) && seen.add(g.id)) : [];
-  if (!saved.length && !seeds.length) { hideResults(); return; }
-  ul.innerHTML = savedRowsHtml(saved)
+  if (!saved.length && !hist.length && !seeds.length) { hideResults(); return; }
+  ul.innerHTML = savedRowsHtml(saved) + historyRowsHtml(hist)
     + (seeds.length ? '<li class="rec-head">Popular places</li>' + seeds.map(() => '<li class="rec drow"></li>').join('') : '');
-  wireSavedRows();
+  wireSavedRows(); wireHistoryRows();
   [...ul.querySelectorAll('.drow')].forEach((li, i) => { const p = seeds[i]; li.innerHTML = resultRow(p); li.onclick = () => selectResult(p); });
   ul.classList.remove('hidden');
 }
@@ -1173,7 +1263,7 @@ $('data-import').onclick = () => {
   if (!txt) { $('data-note').textContent = 'Paste your exported text first.'; return; }
   try {
     const r = importText(txt);
-    $('data-note').textContent = `Restored ${r.addedP} place(s), ${r.addedJ} journey(s), settings & map key${r.missed ? ` · ${r.missed} name(s) not found on the network` : ''}.`;
+    $('data-note').textContent = `Restored ${r.addedP} place(s), ${r.addedJ} journey(s), ${r.addedH} past trip(s), settings & map key${r.missed ? ` · ${r.missed} name(s) not found on the network` : ''}.`;
   } catch (e) { $('data-note').textContent = "Couldn't read that text — check the section headings."; console.error(e); }
 };
 
