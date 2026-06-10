@@ -1,8 +1,16 @@
 # Canal Pal
 
+**Live at [canalpal.co.uk](https://canalpal.co.uk).**
+
 An offline-capable canal journey planner. Tap two points on the map and it works
 out distance (miles & furlongs), number of locks, estimated cruising time and the
 facilities you'll pass. Built on CanalPlanAC's mapping data and OpenStreetMap.
+
+Plan multi-stop journeys (stops insert in geographic order), save and re-open
+them, then **start a journey** to track your position live — with a breadcrumb
+trail, updating ETA, speed and a "north-up / heading-up" compass toggle. Finished
+trips go into a **history** with per-lock dwell times, and everything (places,
+journeys, history, settings) exports/imports as readable text.
 
 ## How it works
 
@@ -49,8 +57,11 @@ npm run preprocess        # places.geojson -> locks.json + facilities.json, clea
 npm run tiles             # canalplan.mbtiles -> public/data/canalplan.pmtiles
 node scripts/download-glyphs.mjs
 npm run dev               # http://localhost:5173
-npm run build             # production PWA in dist/
+npm run build             # production PWA into docs/ (GitHub Pages serves it at canalpal.co.uk)
 ```
+
+Deployed via GitHub Pages from `docs/` on `main`; the custom domain is set by
+`public/CNAME`. `npm run build` regenerates `docs/`.
 
 ## Validate / test
 
@@ -61,8 +72,13 @@ node scripts/smoke.mjs            # headless browser end-to-end (needs dev serve
 
 ## Roadmap
 
+Shipped since the first cut: multi-stop journeys with ordered insertion, saved
+journeys, live GPS tracking + journey history (per-lock dwell times) feeding the
+calibration, named-place search, curvature-aware times, and a heading-up compass.
+
+Still on the list:
 - Bundle a Protomaps GB basemap for true offline streets; import-your-own
   `.pmtiles`/`.mbtiles` basemap via file picker.
-- GPS trip recording (track length/time) to auto-populate the calibration.
-- Waypoints / via-points; per-waterway-type speeds; tunnels & moveable bridges in time model.
-- Search box over named places.
+- Push notifications when a stoppage starts affecting a saved route.
+- Wrap in Capacitor for iOS/Android app-store builds.
+- Per-waterway-type speeds; tunnels & moveable bridges in the time model.
