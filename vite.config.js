@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig(({ command }) => ({
-  // dev runs at root; production is a GitHub Pages project site at /canalpal/
-  base: command === 'build' ? '/canalpal/' : '/',
+export default defineConfig(() => ({
+  // served from the root of the custom domain canalpal.co.uk (see public/CNAME)
+  base: '/',
   build: { target: 'es2022', outDir: 'docs' },
   worker: { format: 'es' },
   plugins: [
