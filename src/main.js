@@ -148,7 +148,7 @@ function attachMapHandlers() {
     userLocation = { lng: e.coords.longitude, lat: e.coords.latitude };
     if (points.length === 0) promptForStart();
   });
-  map._geolocate?.on('error', (e) => { setStatus('Location: ' + (e?.message || 'unavailable')); setTimeout(() => setStatus(''), 4000); });
+  map._geolocate?.on('error', (e) => { setStatus(geoErrText(e)); setTimeout(() => setStatus(''), 7000); });
   map.on('error', () => {});
 
   // feed the locks once both the style and the grouped data are ready
@@ -1231,6 +1231,13 @@ function askForLocation() {
     { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
   );
 }
+// Safari reports code 1 ("User denied") for an OS-level Location Services block
+// too, even when the site is allowed — so say what's actually likely wrong.
+function geoErrText(e) {
+  if (e?.code === 1) return t('Location’s blocked by yer device, not the site — switch on Location Services for your browser ⚓', 'Location is off in your device settings (not the site) — turn on Location Services for your browser.');
+  if (e?.code === 3) return t('Couldn’t get a fix — try again under open sky.', 'Location timed out — try again.');
+  return 'Location unavailable' + (e?.message ? ': ' + e.message : '');
+}
 function locateMe() {
   if (userLocation) { map.flyTo({ center: [userLocation.lng, userLocation.lat], zoom: 14 }); }
   try { map._geolocate?.trigger(); } catch { /* needs gesture */ }
@@ -1242,7 +1249,7 @@ function locateMe() {
       map.flyTo({ center: [userLocation.lng, userLocation.lat], zoom: 14 });
       setStatus(''); if (points.length === 0) promptForStart();
     },
-    (err) => { setStatus('Location: ' + err.message); setTimeout(() => setStatus(''), 4000); },
+    (err) => { setStatus(geoErrText(err)); setTimeout(() => setStatus(''), 7000); },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
   );
 }
