@@ -82,7 +82,7 @@ button, input { font-family: var(--body); }
   display: flex; align-items: center; gap: .55rem;
   padding: .35rem .7rem; padding-top: max(.35rem, env(safe-area-inset-top));
   background: linear-gradient(180deg, rgba(11,42,58,.96), rgba(11,42,58,.55) 80%, transparent);
-  color: var(--parch); pointer-events: none;
+  color: var(--parch); pointer-events: auto; /* absorb taps on the header banner, don't drop a pin on the map */
 }
 #brand-parrot { filter: drop-shadow(1px 2px 1px rgba(0,0,0,.5)); }
 #topbar strong { font-family: var(--pirata); font-weight: 400; font-size: 1.55rem; color: var(--brass); letter-spacing: 1px; text-shadow: 2px 2px 0 #000, 0 0 1px #000; }
