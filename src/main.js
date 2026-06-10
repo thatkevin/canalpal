@@ -266,7 +266,7 @@ function previewAdd() {
   points.splice(index, 0, p);
   clearPreview();
   renderMarkers();
-  if (route && points.length >= 2) applyRoute(route, false);
+  if (route && points.length >= 2) applyRoute(route, true); // fit the whole route into view
   else computeRoute();
 }
 function renderPreviewCard() {
