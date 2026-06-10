@@ -160,6 +160,7 @@ export function createMap(container) {
         base: BASES.colour.source,
         canalplan: { type: 'vector', url: 'pmtiles://canalplan', attribution: '<a href="https://canalplan.org.uk">© CanalPlanAC</a>' },
         route: { type: 'geojson', data: empty() },
+        tracktrail: { type: 'geojson', data: empty() }, // breadcrumb of where you've been
         routefac: { type: 'geojson', data: empty() },
         routelocks: { type: 'geojson', data: empty() },
         stoppages: { type: 'geojson', data: empty() },
@@ -186,6 +187,9 @@ export function createMap(container) {
           paint: { 'line-color': '#3a2410', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 7, 16, 13] } },
         { id: 'route-line', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': '#e8590c', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3.5, 16, 8] } },
+        // breadcrumb trail of where you've actually been (dashed, on top of route)
+        { id: 'track-trail', type: 'line', source: 'tracktrail', layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#0b2a3a', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2, 16, 4], 'line-dasharray': [1, 1.6] } },
 
         // boater POI categories (emoji-in-disc) — toggled by the legend
         ...catLayers,
@@ -251,6 +255,10 @@ function addLockArrow(map) {
 
 export function setRoute(map, coords) {
   map.getSource('route').setData(coords ? { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } } : empty());
+}
+// Breadcrumb trail of the live track (array of [lng,lat]).
+export function setTrail(map, coords) {
+  map.getSource('tracktrail')?.setData(coords && coords.length > 1 ? { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } } : empty());
 }
 export function setRouteFacilities(map, facs) {
   map.getSource('routefac').setData({ type: 'FeatureCollection', features: (facs || []).map((f) => ({ type: 'Feature', properties: { type: f.type, title: f.title }, geometry: { type: 'Point', coordinates: [f.lng, f.lat] } })) });

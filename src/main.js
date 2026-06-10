@@ -1,4 +1,4 @@
-import { createMap, maplibregl, protocol, POI_LAYERS, POI_CATS, setRoute, setRouteFacilities, setRouteLocks, setStoppages, setLockFlights, setLocksAll, setLayerVisible, fitRoute } from './map.js';
+import { createMap, maplibregl, protocol, POI_LAYERS, POI_CATS, setRoute, setTrail, setRouteFacilities, setRouteLocks, setStoppages, setLockFlights, setLocksAll, setLayerVisible, fitRoute } from './map.js';
 import { estimate, formatDuration, getSettings, saveSettings, correctionFactor, logTrip } from './time-model.js';
 import RouterWorker from './router.worker.js?worker';
 
@@ -316,9 +316,27 @@ function onFix(pos) {
   saveActive();
   if (liveMarker) liveMarker.setLngLat([p.lng, p.lat]);
   else { const el = document.createElement('div'); el.className = 'wp wp-live'; el.innerHTML = '<span>⛵</span>'; liveMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(map); }
+  setTrail(map, active.track.map((q) => [q.lng, q.lat]));
   const prog = routeProgress(p);
   renderTracking(prog);
-  if (prog && prog.remainingMiles <= ARRIVE_MI) endJourney(true);
+  // Don't call it arrived while a lock still lies ahead on the route — wait until
+  // you're on the destination's side of it.
+  if (prog && prog.remainingMiles <= ARRIVE_MI && prog.locksAhead === 0) endJourney(true);
+}
+// Along-route distance (miles) of each lock, cached on the route so we can tell
+// how many locks still lie ahead of the current position.
+function lockAlongMiles() {
+  if (!lastRoute) return [];
+  if (lastRoute._lockAlong) return lastRoute._lockAlong;
+  const coords = lastRoute.coords, locks = lastRoute.routeLocks || [];
+  const cum = [0];
+  for (let i = 1; i < coords.length; i++) cum[i] = cum[i - 1] + metres(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]) / 1609.344;
+  lastRoute._lockAlong = locks.map((lk) => {
+    let best = Infinity, bi = 0;
+    for (let i = 0; i < coords.length; i++) { const d = metres(lk.lng, lk.lat, coords[i][0], coords[i][1]); if (d < best) { best = d; bi = i; } }
+    return cum[bi];
+  });
+  return lastRoute._lockAlong;
 }
 // Project the current position onto the planned polyline → distance covered, so
 // remaining distance + ETA update as you go.
@@ -339,7 +357,22 @@ function routeProgress(p) {
   const total = lastRoute.miles, coveredMi = coveredM / 1609.344, remaining = Math.max(0, total - coveredMi);
   const est = estimate(total, lastRoute.locks, getSettings(), { bendFactor: lastRoute.bendFactor });
   const pace = total > 0 ? est.hours / total : 0;
-  return { coveredMi, remainingMiles: remaining, remHours: remaining * pace, off: best };
+  const locksAhead = lockAlongMiles().filter((m) => m > coveredMi + 0.005).length; // ~8m past
+  return { coveredMi, remainingMiles: remaining, remHours: remaining * pace, off: best, locksAhead };
+}
+// Actual distance travelled along the recorded track + current speed (last ~60s).
+function trackStats() {
+  const tr = active?.track || [];
+  let distMi = 0;
+  for (let i = 1; i < tr.length; i++) distMi += metres(tr[i - 1].lng, tr[i - 1].lat, tr[i].lng, tr[i].lat) / 1609.344;
+  let cur = 0;
+  if (tr.length >= 2) {
+    const tNow = tr[tr.length - 1].t; let i = tr.length - 1, d = 0;
+    while (i > 0 && tNow - tr[i - 1].t < 60000) { d += metres(tr[i].lng, tr[i].lat, tr[i - 1].lng, tr[i - 1].lat); i--; }
+    const dt = (tNow - tr[i].t) / 3600000;
+    if (dt > 0) cur = (d / 1609.344) / dt;
+  }
+  return { distMi, cur };
 }
 function renderTracking(prog) {
   if (!active) return;
@@ -350,6 +383,8 @@ function renderTracking(prog) {
   $('route-warning').innerHTML = ''; $('route-log').innerHTML = '';
   if (prog) {
     const arr = new Date(Date.now() + prog.remHours * 3600000).toTimeString().slice(0, 5);
+    const st = trackStats();
+    const avg = elapsed > 0 ? prog.coveredMi / elapsed : 0;
     summaryText = `🛶 ${prog.remainingMiles.toFixed(1)} mi to go · arrive ~${arr}`;
     $('route-summary').innerHTML = `
       <div class="stats">
@@ -358,6 +393,7 @@ function renderTracking(prog) {
         <div class="stat"><span class="big">${arr}</span><span class="lbl">ETA</span></div>
         <div class="stat"><span class="big">${formatDuration(elapsed)}</span><span class="lbl">underway</span></div>
       </div>
+      <p class="muted small">Now ${st.cur.toFixed(1)} mph · avg ${avg.toFixed(1)} mph · ${st.distMi.toFixed(1)} mi travelled${prog.locksAhead ? ` · ${prog.locksAhead} lock${prog.locksAhead === 1 ? '' : 's'} ahead` : ''}.</p>
       ${prog.off > 150 ? '<p class="muted small">You look off the planned route — ETA may drift.</p>' : ''}
       <button id="btn-end" class="primary">Arrived / end journey</button>`;
   } else {
@@ -380,6 +416,7 @@ function endJourney(arrived) {
   }
   active = null; localStorage.removeItem(ACTIVE_KEY);
   liveMarker?.remove(); liveMarker = null;
+  setTrail(map, null);
   if (lastRoute) renderSummary(lastRoute);
 }
 // On reload, pick up a journey that's still under way.
@@ -388,8 +425,47 @@ async function resumeActiveJourney() {
   active = a; points = a.points.map((p) => ({ ...p })); renderMarkers();
   await computeRoute();
   if (!lastRoute) { active = null; localStorage.removeItem(ACTIVE_KEY); return; }
+  setTrail(map, active.track.map((q) => [q.lng, q.lat])); // restore the breadcrumb
   beginWatch(); renderTracking();
 }
+
+// --- demo: play a journey along the planned route (no GPS needed) ---
+// In the browser console:  __simulate()  — uses the current route, or a demo
+// Worcester & Birmingham leg if none is planned. __simulate(20) runs it faster.
+let simTimer = null;
+function coordAtMiles(coords, mi) {
+  let cum = 0; const target = mi * 1609.344;
+  for (let k = 1; k < coords.length; k++) {
+    const seg = metres(coords[k - 1][0], coords[k - 1][1], coords[k][0], coords[k][1]);
+    if (cum + seg >= target) { const f = seg ? (target - cum) / seg : 0; return [coords[k - 1][0] + (coords[k][0] - coords[k - 1][0]) * f, coords[k - 1][1] + (coords[k][1] - coords[k - 1][1]) * f]; }
+    cum += seg;
+  }
+  return coords[coords.length - 1];
+}
+function startSim(secs = 40) {
+  if (!lastRoute) return;
+  if (simTimer) clearInterval(simTimer);
+  if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  active = { points: points.map(({ lng, lat, name, id }) => ({ lng, lat, name, id: id || '' })), startedAt: Date.now(), track: [] };
+  saveActive(); renderTracking();
+  const coords = lastRoute.coords, total = lastRoute.miles;
+  const steps = Math.max(8, Math.round(secs)); let step = 0;
+  simTimer = setInterval(() => {
+    step++;
+    const [lng, lat] = coordAtMiles(coords, total * step / steps);
+    onFix({ coords: { longitude: lng, latitude: lat } });
+    if (!active || step >= steps) { clearInterval(simTimer); simTimer = null; }
+  }, 1000);
+}
+window.__simulate = async (secs) => {
+  if (!lastRoute) {
+    points = [{ lng: -1.9717, lat: 52.3486, name: 'Alvechurch' }, { lng: -1.9300, lat: 52.4060, name: "King's Norton" }];
+    renderMarkers(); await computeRoute();
+    if (!lastRoute) { console.warn('Could not plan the demo route.'); return; }
+  }
+  startSim(secs);
+  console.log('Simulating the journey — watch the trail, ETA and speed update, then arrival.');
+};
 
 // With only a start set, show the nearest boater services from there.
 async function requestServices() {
