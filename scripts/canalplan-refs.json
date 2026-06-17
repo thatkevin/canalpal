@@ -1,0 +1,12 @@
+{
+  "_README": "CanalPlanAC figures gathered BY HAND from canalplan.uk in a browser (normal human use — their robots.txt disallows automated /cgi-bin/ access, so we do NOT scrape it). For each route key below, open the planner link that scripts/compare-canalplan.mjs prints, read off the distance / locks / time, and fill them in. Set `hours` as a decimal (90 min = 1.5). Note CanalPlanAC's assumed speed if it's shown, so the comparison is like-for-like. Leave a field null until you've collected it; re-run the script to see the comparison.",
+  "_assumedSpeedNote": "If CanalPlanAC shows the speed it assumed (mph), record it here so we know what we're comparing against.",
+  "routes": {
+    "Worcester & Birmingham (Tardebigge top→bottom)": { "miles": 2.5, "locks": 30, "hours": null, "cpSpeedMph": null },
+    "Worcester & Birmingham (Hanbury Jn→Kings Norton Jn)": { "miles": 15, "locks": 42, "hours": null, "cpSpeedMph": null },
+    "Stratford Canal (Kings Norton Jn→Stratford)": { "miles": 25.5, "locks": 56, "hours": null, "cpSpeedMph": null },
+    "Coventry Canal (Coventry Basin→Fradley Jn)": { "miles": 38, "locks": 13, "hours": null, "cpSpeedMph": null },
+    "Oxford Canal (Hawkesbury Jn→Napton Jn)": { "miles": null, "locks": null, "hours": null, "cpSpeedMph": null },
+    "Llangollen (Hurleston Jn→Llangollen)": { "miles": 46, "locks": 21, "hours": null, "cpSpeedMph": null }
+  }
+}

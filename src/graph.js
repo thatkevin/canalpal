@@ -107,7 +107,13 @@ class MinHeap {
 }
 
 export class CanalGraph {
-  constructor() {
+  // opts.weldM: endpoint-weld distance in metres (default WELD_M=12, tuned for the
+  // clean CanalPlan centrelines). Raw OSM junctions are looser — the --national
+  // build passes ~25 to bridge canal-canal junctions whose ways don't share a node.
+  constructor(opts = {}) {
+    this.weldM = opts.weldM ?? WELD_M;
+    this.bridge = !!opts.bridge;      // run weldJunctions() during build (raw OSM)
+    this.snapM = opts.snapM ?? 30;    // edge-snap radius for weldJunctions
     this.nodes = [];          // [lng, lat] per node id
     this.adj = [];            // adj[id] = [{to, w, edge}]
     this.edges = [];          // edge.type, edge.locks (chamber count)
@@ -131,9 +137,9 @@ export class CanalGraph {
     return id;
   }
 
-  // Find an existing node within WELD_M metres (for endpoint welding).
+  // Find an existing node within weldM metres (for endpoint welding).
   _weldNode(lng, lat) {
-    let best = -1, bd = WELD_M;
+    let best = -1, bd = this.weldM;
     for (const id of this._nodeGrid.near(lng, lat, 1)) {
       const [nl, na] = this.nodes[id];
       const d = haversine(lng, lat, nl, na);
@@ -181,21 +187,77 @@ export class CanalGraph {
         }
       }
     }
+    // Bridge unconnected junctions BEFORE snapping locks (split edges carry no lock
+    // data yet), so locks then snap onto the post-split edges correctly.
+    if (this.bridge) this.weldJunctions(this.snapM);
     if (locks) this._snapLocks(locks);
     if (facilities) this._indexFacilities(facilities);
     return this;
   }
 
-  _nearestEdge(lng, lat, ring = 1) {
+  _nearestEdge(lng, lat, ring = 1, excludeNode = -1) {
     let best = null, bd = Infinity;
     for (const edgeId of this._edgeGrid.near(lng, lat, ring)) {
+      if (this.edges[edgeId].dead) continue;            // edge was split away
       const [a, b] = this._edgeEnds[edgeId];
+      if (a === excludeNode || b === excludeNode) continue; // skip edges at this node
       const [al, aa] = this.nodes[a], [bl, ba] = this.nodes[b];
       const pr = projectToSegment(lng, lat, al, aa, bl, ba);
       if (pr.dist < bd) { bd = pr.dist; best = { edgeId, a, b, ...pr, dist: pr.dist }; }
     }
-    if (!best && ring < 4) return this._nearestEdge(lng, lat, ring + 1);
+    if (!best && ring < 4) return this._nearestEdge(lng, lat, ring + 1, excludeNode);
     return best;
+  }
+
+  // Split edge `edgeId` at (lng,lat), returning the (new or existing) node there.
+  // The original edge is marked dead and dropped from adjacency; two halves replace
+  // it. Used by weldJunctions; must run before _snapLocks (no lock data to migrate).
+  _splitEdge(edgeId, lng, lat) {
+    const [a, b] = this._edgeEnds[edgeId];
+    const ed = this.edges[edgeId];
+    const m = this._nodeAt(lng, lat);
+    if (m === a || m === b) return m;
+    this.adj[a] = this.adj[a].filter((e) => e.edge !== edgeId);
+    this.adj[b] = this.adj[b].filter((e) => e.edge !== edgeId);
+    ed.dead = true;
+    this._addEdge(a, m, ed.type, ed.name);
+    this._addEdge(m, b, ed.type, ed.name);
+    return m;
+  }
+
+  // Bridge unconnected junctions: snap each dead-end (degree-1) node onto the
+  // nearest waterway EDGE within snapM metres that's in a DIFFERENT component, and
+  // split that edge to join them. Fixes canal↔river confluences (a canal meets a
+  // river mid-edge, so plain endpoint-welding can't connect them) and canal↔canal
+  // T-junctions. Cross-component-only, so it never adds a spurious shortcut inside
+  // an already-connected stretch. Returns the number of junctions welded.
+  weldJunctions(snapM = 30) {
+    const parent = [];
+    for (let i = 0; i < this.nodes.length; i++) parent[i] = i;
+    const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[a] = b; };
+    for (let u = 0; u < this.adj.length; u++) for (const e of this.adj[u]) if (e.to > u) union(u, e.to);
+
+    const deadEnds = [];
+    for (let u = 0; u < this.adj.length; u++) if (this.adj[u].length === 1) deadEnds.push(u);
+
+    let welded = 0;
+    for (const u of deadEnds) {
+      if (this.adj[u].length !== 1) continue;        // gained an edge from an earlier weld
+      const [lng, lat] = this.nodes[u];
+      const e = this._nearestEdge(lng, lat, 1, u);
+      if (!e || e.dist > snapM) continue;
+      let m;
+      if (e.t < 0.05) m = e.a;
+      else if (e.t > 0.95) m = e.b;
+      else m = this._splitEdge(e.edgeId, e.lng, e.lat);
+      if (parent[m] === undefined) { parent[m] = m; union(m, e.a); union(m, e.b); }
+      if (find(u) === find(m)) continue;             // already connected — skip
+      this._addEdge(u, m, this.edges[this.adj[u][0].edge].type);
+      union(u, m);
+      welded++;
+    }
+    return welded;
   }
 
   _snapLocks(locks) {

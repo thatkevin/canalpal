@@ -12,8 +12,8 @@
     </script>
     <link rel="icon" type="image/gif" sizes="any" href="./icons/parrot-favicon.gif" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <script type="module" crossorigin src="/assets/index-CinBYcSu.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-C-vc53nl.css">
+    <script type="module" crossorigin src="/assets/index-3J76PrA9.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CnsCbgRN.css">
   <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
   <body>
     <div id="map"></div>
@@ -41,6 +41,7 @@
       <img id="brand-parrot" src="./img/parrot.gif" alt="" width="34" height="43" />
       <strong>Canal Pal</strong>
       <span id="status" class="status"></span>
+      <button id="btn-logbook" class="topbar-btn" title="Log book — past trips & saved routes">📖</button>
       <button id="btn-settings" class="topbar-btn" title="Settings & map key">⚙︎</button>
     </header>
 
@@ -96,6 +97,13 @@
               <option value="gongoozler">Gongoozler (plain)</option>
             </select>
           </label>
+          <label>Map data
+            <select id="set-source">
+              <option value="canalplan">CanalPlanAC (fullest detail)</option>
+              <option value="osm">OpenStreetMap (open licence)</option>
+            </select>
+          </label>
+          <p id="source-note" class="muted small"></p>
           <p id="calib-note" class="muted"></p>
           <details id="data-io">
             <summary>Back up / restore my data</summary>

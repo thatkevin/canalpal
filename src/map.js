@@ -45,6 +45,14 @@ export const POI_CATS = [
   { id: 'food',      label: 'Pubs & shops',        emoji: '🍺', bg: '#a8431a', icons: ['cp-pub', 'cp-bar', 'cp-restaurant', 'cp-takeaway', 'cp-coffeeshop', 'cp-shop', 'cp-supermarket', 'cp-genshop', 'cp-miscshop', 'cp-diy', 'cp-pharmacy', 'cp-laundry'] },
 ];
 
+// Toggleable raster overlays (off by default). Like the basemap they need the
+// network the first time, but visited tiles are cached so panned-over areas keep
+// working offline. OpenRailwayMap draws rail lines + stations far more boldly
+// than the faint hairlines on the plain chart.
+export const OVERLAYS = [
+  { id: 'railway', label: 'Railways & stations', emoji: '🚉' },
+];
+
 const catLayers = POI_CATS.map((c) => ({
   id: 'cat-' + c.id, type: 'symbol', source: 'canalplan', 'source-layer': 'canalplan_places',
   filter: ['all', ['==', ['get', 'layer'], 'facilities'], ['in', ['get', 'icon'], ['literal', c.icons]]],
@@ -158,6 +166,9 @@ export function createMap(container) {
       glyphs: BASE + 'glyphs/{fontstack}/{range}.pbf',
       sources: {
         base: BASES.colour.source,
+        railway: { type: 'raster', tileSize: 256, maxzoom: 19,
+          tiles: ['a', 'b', 'c'].map((s) => `https://${s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png`),
+          attribution: '<a href="https://www.openrailwaymap.org/">© OpenRailwayMap</a>' },
         canalplan: { type: 'vector', url: 'pmtiles://canalplan', attribution: '<a href="https://canalplan.org.uk">© CanalPlanAC</a>' },
         route: { type: 'geojson', data: empty() },
         tracktrail: { type: 'geojson', data: empty() }, // breadcrumb of where you've been
@@ -171,6 +182,9 @@ export function createMap(container) {
       layers: [
         { id: 'bg', type: 'background', paint: { 'background-color': '#aadaff' } },
         { id: 'base', type: 'raster', source: 'base', paint: { 'raster-opacity': 0.95 } },
+        // railway overlay — off by default, toggled from the map key. Sits above the
+        // base but below the canals so the waterways stay the star where they cross.
+        { id: 'railway', type: 'raster', source: 'railway', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.9 } },
 
         { id: 'ww-unnav', type: 'line', source: 'canalplan', 'source-layer': 'canalplan_waterways', filter: ['!', NAVIGABLE],
           paint: { 'line-color': '#7a6a55', 'line-dasharray': [2, 2], 'line-width': 1.3 } },

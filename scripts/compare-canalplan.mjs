@@ -18,7 +18,8 @@ import { estimate, formatDuration, DEFAULTS } from '../src/time-model.js';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const J = (f) => JSON.parse(readFileSync(join(root, 'public', 'data', f), 'utf8'));
 const places = JSON.parse(readFileSync(join(root, 'data', 'places.geojson'), 'utf8').replace(/,(\s*[\]}])/g, '$1'));
-const refs = JSON.parse(readFileSync(join(root, 'data', 'canalplan-refs.json'), 'utf8')).routes || {};
+const here = dirname(fileURLToPath(import.meta.url));
+const refs = JSON.parse(readFileSync(join(here, 'canalplan-refs.json'), 'utf8')).routes || {};
 
 const g = new CanalGraph().build(J('waterways.geojson'), J('locks.json'), J('facilities.json'));
 const place = (title) => {

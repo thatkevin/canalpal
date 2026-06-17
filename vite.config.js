@@ -33,9 +33,21 @@ export default defineConfig(() => ({
         // content-hash (installed users would be stuck on the build-time copy).
         // Served NetworkFirst below instead, so updates land immediately online
         // and still fall back to cache offline.
-        globIgnores: ['**/data/stoppages.json', '**/data/services.json'],
+        // Also skip the alternative OSM data set: only CanalPlan-default users
+        // shouldn't pay ~6 MB upfront for a source they may never pick. It's
+        // runtime-cached on first switch instead (CacheFirst below).
+        globIgnores: ['**/data/stoppages.json', '**/data/services.json', '**/data/osm/*'],
         maximumFileSizeToCacheInBytes: 80 * 1024 * 1024,
         runtimeCaching: [
+          {
+            // OpenStreetMap data set: fetched on first source-switch, then offline.
+            urlPattern: ({ url }) => /\/data\/osm\/.+\.(json|geojson)$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'osm-data',
+              expiration: { maxEntries: 6, maxAgeSeconds: 60 * 60 * 24 * 180 },
+            },
+          },
           {
             // Daily-refreshed CRT data: prefer fresh, fall back to cache offline.
             urlPattern: ({ url }) => /\/data\/(stoppages|services)\.json$/.test(url.pathname),
@@ -52,7 +64,7 @@ export default defineConfig(() => ({
             // requests — so it's deliberately not handled here.
             // Raster basemap tiles (CARTO coloured/mono): cache visited tiles so
             // areas you've panned over keep working offline ("nearly offline").
-            urlPattern: ({ url }) => /basemaps\.cartocdn\.com|tile\.openstreetmap\.org/.test(url.host),
+            urlPattern: ({ url }) => /basemaps\.cartocdn\.com|tile\.openstreetmap\.org|tiles\.openrailwaymap\.org/.test(url.host),
             handler: 'CacheFirst',
             options: {
               cacheName: 'basemap-raster',

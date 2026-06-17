@@ -3,14 +3,19 @@ import { CanalGraph } from './graph.js';
 
 let graph = null;
 
-async function load(base) {
-  const [waterways, locks, facilities, services] = await Promise.all([
-    fetch(base + 'data/waterways.geojson').then((r) => r.json()),
-    fetch(base + 'data/locks.json').then((r) => r.json()),
-    fetch(base + 'data/facilities.json').then((r) => r.json()),
-    fetch(base + 'data/services.json').then((r) => r.json()).catch(() => []), // CRT facilities
+async function load(base, source = 'canalplan') {
+  const dir = source === 'osm' ? 'data/osm/' : 'data/';
+  const [waterways, locks, facilities] = await Promise.all([
+    fetch(base + dir + 'waterways.geojson').then((r) => r.json()),
+    fetch(base + dir + 'locks.json').then((r) => r.json()),
+    fetch(base + dir + 'facilities.json').then((r) => r.json()),
   ]);
-  graph = new CanalGraph().build(waterways, locks, facilities.concat(services));
+  // CRT services are an extra CanalPlan-side layer; OSM facilities already include them.
+  const services = source === 'osm' ? [] : await fetch(base + dir + 'services.json').then((r) => r.json()).catch(() => []);
+  // Raw OSM needs looser endpoint welding + junction bridging; CanalPlan centrelines
+  // are pre-welded for routing, so they keep the tighter defaults.
+  const opts = source === 'osm' ? { weldM: 25, bridge: true, snapM: 30 } : {};
+  graph = new CanalGraph(opts).build(waterways, locks, facilities.concat(services));
   const c = graph.components();
   return { nodes: graph.nodes.length, edges: graph.edges.length, components: c.count };
 }
@@ -19,7 +24,7 @@ self.onmessage = async (e) => {
   const { id, type, payload } = e.data;
   try {
     if (type === 'init') {
-      const stats = await load(payload.base);
+      const stats = await load(payload.base, payload.source);
       self.postMessage({ id, ok: true, result: stats });
     } else if (type === 'route') {
       if (!graph) throw new Error('graph not ready');

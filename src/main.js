@@ -1,4 +1,4 @@
-import { createMap, maplibregl, protocol, POI_LAYERS, POI_CATS, setRoute, setTrail, setRouteFacilities, setRouteLocks, setStoppages, setLockFlights, setLocksAll, setLayerVisible, fitRoute } from './map.js';
+import { createMap, maplibregl, protocol, POI_LAYERS, POI_CATS, OVERLAYS, setRoute, setTrail, setRouteFacilities, setRouteLocks, setStoppages, setLockFlights, setLocksAll, setLayerVisible, fitRoute } from './map.js';
 import { estimate, formatDuration, getSettings, saveSettings, correctionFactor, logTrip } from './time-model.js';
 import RouterWorker from './router.worker.js?worker';
 
@@ -44,12 +44,21 @@ const arrowFor = (b) => ARROWS[Math.round((((b % 360) + 360) % 360) / 45) % 8];
 // --- theme (pirate | gongoozler) ---
 let theme = localStorage.getItem('cp.theme') || 'pirate';
 const t = (pirate, plain) => (theme === 'gongoozler' ? plain : pirate);
+// --- routing data source (canalplan | osm) — drives attribution + the worker's data ---
+let source = localStorage.getItem('cp.source') === 'osm' ? 'osm' : 'canalplan';
 function applyTheme() {
   document.documentElement.dataset.theme = theme;
-  $('credit').innerHTML = t(
-    `☠ Charts plundered fair an' square — with thanks — from the good crew at <a href="https://canalplan.org.uk" target="_blank" rel="noopener">CanalPlanAC</a>. Base waters © OpenStreetMap. ⚓`,
-    `Mapping data from <a href="https://canalplan.org.uk" target="_blank" rel="noopener">CanalPlanAC</a>, used with thanks. Base map © OpenStreetMap contributors.`
-  );
+  // Credit MUST match the active source — CanalPlanAC is non-commercial + credit;
+  // OpenStreetMap is ODbL (commercial use fine with attribution).
+  $('credit').innerHTML = source === 'osm'
+    ? t(
+        `☠ Charts charted from the open seas o' <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL). Fair winds! ⚓`,
+        `Mapping &amp; routing data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL).`
+      )
+    : t(
+        `☠ Charts plundered fair an' square — with thanks — from the good crew at <a href="https://canalplan.org.uk" target="_blank" rel="noopener">CanalPlanAC</a>. Base waters © OpenStreetMap. ⚓`,
+        `Mapping data from <a href="https://canalplan.org.uk" target="_blank" rel="noopener">CanalPlanAC</a>, used with thanks. Base map © OpenStreetMap contributors.`
+      );
 }
 applyTheme();
 
@@ -100,7 +109,7 @@ async function boot() {
   }
 
   // load the routing network in parallel with the chart download
-  const initP = call('init', { base: BASE }).catch((e) => { console.error(e); return null; });
+  const initP = call('init', { base: BASE, source }).catch((e) => { console.error(e); return null; });
 
   try {
     const blob = await getArchiveBlob((p) => { if (!cached) setProgress(p); });
@@ -580,14 +589,24 @@ function loadLockGroups() {
 // --- legend: toggle POI categories on/off (locks are pinned on) ---
 const LAYER_KEY = 'cp.layers';
 const getLayerPrefs = () => { try { return JSON.parse(localStorage.getItem(LAYER_KEY) || '{}'); } catch { return {}; } };
+const legRow = (attr, c) => `<button type="button" class="leg-row" data-${attr}="${c.id}"><span class="leg-emoji">${c.emoji}</span><span class="leg-label">${escapeHtml(c.label)}</span></button>`;
 function buildLegend() {
-  $('legend-body').innerHTML = POI_CATS.map((c) => `<button type="button" class="leg-row" data-cat="${c.id}"><span class="leg-emoji">${c.emoji}</span><span class="leg-label">${escapeHtml(c.label)}</span></button>`).join('');
+  const poi = POI_CATS.map((c) => legRow('cat', c)).join('');
+  const overlays = OVERLAYS.map((c) => legRow('overlay', c)).join('');
+  $('legend-body').innerHTML = poi + (overlays ? `<div class="leg-sep"></div><p class="muted small leg-note">Extras — need a connection the first time, then cached as you pan.</p>${overlays}` : '');
   $('legend-body').querySelectorAll('.leg-row[data-cat]').forEach((el) => { el.onclick = () => toggleCat(el.dataset.cat); });
+  $('legend-body').querySelectorAll('.leg-row[data-overlay]').forEach((el) => { el.onclick = () => toggleOverlay(el.dataset.overlay); });
   applyLayerPrefs();
 }
 function toggleCat(id) {
   const prefs = getLayerPrefs();
   prefs[id] = prefs[id] === false; // flip (default on)
+  localStorage.setItem(LAYER_KEY, JSON.stringify(prefs));
+  applyLayerPrefs();
+}
+function toggleOverlay(id) {
+  const prefs = getLayerPrefs();
+  prefs[id] = prefs[id] !== true; // flip (default off)
   localStorage.setItem(LAYER_KEY, JSON.stringify(prefs));
   applyLayerPrefs();
 }
@@ -597,6 +616,12 @@ function applyLayerPrefs() {
     const on = prefs[c.id] !== false;
     if (map) setLayerVisible(map, 'cat-' + c.id, on);
     const el = document.querySelector(`.leg-row[data-cat="${c.id}"]`);
+    if (el) el.classList.toggle('leg-off', !on);
+  }
+  for (const c of OVERLAYS) {
+    const on = prefs[c.id] === true; // default off
+    if (map) setLayerVisible(map, c.id, on);
+    const el = document.querySelector(`.leg-row[data-overlay="${c.id}"]`);
     if (el) el.classList.toggle('leg-off', !on);
   }
 }
@@ -1335,6 +1360,10 @@ $('btn-settings').onclick = () => {
   const s = getSettings();
   $('set-speed').value = s.speedMph; $('set-lock').value = s.lockMinutes; $('set-hours').value = s.hoursPerDay;
   $('set-theme').value = theme;
+  $('set-source').value = source;
+  $('source-note').textContent = source === 'osm'
+    ? 'OpenStreetMap — open (ODbL), fine for commercial use. Main network only; a few river-linked canals route separately.'
+    : 'CanalPlanAC — fullest detail, but non-commercial use only.';
   const trips = t('voyages', 'trips');
   const { factor, samples } = correctionFactor(s);
   $('calib-note').textContent = samples >= 2 ? `Calibrated from ${samples} ${trips}: predictions ×${factor.toFixed(2)}.` : `Log a couple of ${trips} and predictions self-calibrate.`;
@@ -1346,6 +1375,12 @@ $('set-save').addEventListener('click', () => {
   localStorage.setItem('cp.theme', theme);
   applyTheme();
   if (lastRoute) renderSummary(lastRoute);
+  // Switching data source rebuilds the whole routing graph + markers, so reload.
+  const newSource = $('set-source').value === 'osm' ? 'osm' : 'canalplan';
+  if (newSource !== source) {
+    localStorage.setItem('cp.source', newSource);
+    location.reload();
+  }
 });
 
 // backup / restore (readable text)
