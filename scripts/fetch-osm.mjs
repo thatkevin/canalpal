@@ -284,6 +284,93 @@ async function fetchRivers(box) {
   }));
 }
 
+// ===================== STATIONS MODE ===========================
+// Passenger railway stations across GB — the bit a boater actually wants ("where
+// can I hop a train to get around / fetch crew / reach the shops"). National Rail
+// heavy-rail only: tram, metro/subway, monorail and heritage/tourist lines are
+// dropped, as are freight-only halts. ~2.5k points, so it bundles tiny and works
+// fully offline. Written straight into public/data/osm/ (the served copy).
+if (args.includes('--stations')) {
+  const GB = [49.8, -8.7, 61.0, 1.95]; // S,W,N,E
+  const els = await overpass(`[out:json][timeout:180];
+    (
+      node["railway"="station"](${bboxStr(GB)});
+      node["railway"="halt"](${bboxStr(GB)});
+    );
+    out;`);
+  const drop = (t) => t.subway === 'yes' || t.tram === 'yes' || t.monorail === 'yes' || t.light_rail === 'yes'
+    || ['subway', 'light_rail', 'monorail', 'tram'].includes(t.station)
+    || t.usage === 'tourism' || t.usage === 'industrial' || t.tourism === 'yes'
+    || t.disused === 'yes' || t['disused:railway'] || t.abandoned === 'yes';
+  const stations = els
+    .filter((e) => e.lat != null && e.tags?.name && !drop(e.tags))
+    .map((e) => ({ lng: r5(e.lon), lat: r5(e.lat), title: e.tags.name }));
+  const pubDir = join(root, 'public', 'data', 'osm');
+  mkdirSync(pubDir, { recursive: true });
+  writeFileSync(join(pubDir, 'stations.json'), JSON.stringify(stations));
+  console.log(`stations: ${stations.length} passenger stations -> ${join(pubDir, 'stations.json')}`);
+  process.exit(0);
+}
+
+// ===================== RAIL-LINES MODE =========================
+// Passenger railway lines (light-grey context under the NR station markers).
+// railway=rail with usage main|branch only — so freight-only lines (usage
+// industrial), sidings/yards/spurs/crossovers (any service=*), and tram/metro/
+// light-rail (different railway= value) are all excluded. Tiled over the same
+// extent as the canal network (rail far from any canal isn't useful here), merged
+// by OSM id. Written to public/data/osm/railways.geojson; runtime-cached + not
+// precached (see vite.config.js), so it only downloads when the layer's switched on.
+if (args.includes('--rail-lines')) {
+  const TILE = 1.5;
+  const railDir = join(cacheDir, 'rail');
+  mkdirSync(railDir, { recursive: true });
+  const cp = JSON.parse(readFileSync(join(root, 'data', 'waterways.geojson'), 'utf8').replace(/,(\s*[\]}])/g, '$1'));
+  const tiles = new Map();
+  for (const f of cp.features) {
+    const ls = f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : [f.geometry.coordinates];
+    for (const line of ls) for (const [x, y] of line) {
+      const ix = Math.floor(x / TILE), iy = Math.floor(y / TILE);
+      tiles.set(ix + ',' + iy, [iy * TILE, ix * TILE, (iy + 1) * TILE, (ix + 1) * TILE]); // S,W,N,E
+    }
+  }
+  const tileList = [...tiles.entries()];
+  console.log(`Rail lines: ${tileList.length} tiles of ${TILE}° (passenger main/branch only).`);
+  const byId = new Map();
+  let done = 0; const failed = [];
+  for (const [key, box] of tileList) {
+    done++;
+    const file = join(railDir, key.replace(',', '_') + '.json');
+    let els = null;
+    if (existsSync(file)) els = JSON.parse(readFileSync(file, 'utf8'));
+    else {
+      process.stdout.write(`  [${done}/${tileList.length}] tile ${key} … `);
+      try {
+        els = await overpass(`[out:json][timeout:240];
+          way["railway"="rail"]["usage"~"^(main|branch)$"]["service"!~"."](${bboxStr(box)});
+          out geom;`);
+        writeFileSync(file, JSON.stringify(els));
+        console.log(`${els.length} ways`);
+      } catch (e) { console.log(`FAILED (${e.message.slice(0, 40)})`); failed.push(key); els = []; }
+      await sleep(2000);
+    }
+    for (const el of els) {
+      if (byId.has(el.id) || !el.geometry || el.geometry.length < 2) continue;
+      byId.set(el.id, {
+        type: 'Feature', properties: {},
+        geometry: { type: 'LineString', coordinates: el.geometry.map((p) => [r5(p.lon), r5(p.lat)]) },
+      });
+    }
+  }
+  if (failed.length) console.log(`⚠ failed tiles: ${failed.join(' ')} (rerun --rail-lines to retry)`);
+  const inGB = (lng, lat) => lng >= -8.5 && lng <= 1.95 && lat >= 49.8 && lat <= 61.0;
+  const features = [...byId.values()].filter((f) => { const c = f.geometry.coordinates; const [x, y] = c[Math.floor(c.length / 2)]; return inGB(x, y); });
+  const pubDir = join(root, 'public', 'data', 'osm');
+  mkdirSync(pubDir, { recursive: true });
+  writeFileSync(join(pubDir, 'railways.geojson'), JSON.stringify({ type: 'FeatureCollection', features }));
+  console.log(`rail lines: ${features.length} ways -> ${join(pubDir, 'railways.geojson')}`);
+  process.exit(0);
+}
+
 if (NATIONAL) {
   const TILE = 1.5;
   const natDir = join(cacheDir, 'national');

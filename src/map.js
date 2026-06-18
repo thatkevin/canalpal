@@ -12,7 +12,7 @@ maplibregl.addProtocol('pmtiles', protocol.tile);
 const BASE = import.meta.env.BASE_URL || './';
 
 // POI layers that respond to clicks (show a popup instead of adding a waypoint).
-export const POI_LAYERS = ['cat-moorings', 'cat-water', 'cat-fuel', 'cat-sanitary', 'cat-rubbish', 'cat-food', 'pl-label'];
+export const POI_LAYERS = ['cat-moorings', 'cat-water', 'cat-fuel', 'cat-sanitary', 'cat-rubbish', 'cat-food', 'rail-station', 'pl-label'];
 
 // Boater-relevant facility icons (excludes the 80k bus stops, banks, etc. that
 // otherwise litter the map).
@@ -50,7 +50,7 @@ export const POI_CATS = [
 // working offline. OpenRailwayMap draws rail lines + stations far more boldly
 // than the faint hairlines on the plain chart.
 export const OVERLAYS = [
-  { id: 'railway', label: 'Railways & stations', emoji: '🚉' },
+  { id: 'railway', label: 'Railways & stations', emoji: '🚉', layers: ['rail-line', 'rail-station'] },
 ];
 
 const catLayers = POI_CATS.map((c) => ({
@@ -153,9 +153,27 @@ function lockFlightImage(map) {
   map.addImage('ic-lock-flight', { width: s, height: s, data: x.getImageData(0, 0, s, s).data }, { pixelRatio: 2 });
 }
 
+// A small "NR" badge (National Rail navy, white text) marking a passenger station.
+function nrImage(map) {
+  if (map.hasImage('ic-nr')) return;
+  const s = 40, m = 4, r = 9; const c = document.createElement('canvas'); c.width = c.height = s;
+  const x = c.getContext('2d');
+  x.beginPath();
+  x.moveTo(m + r, m);
+  x.arcTo(s - m, m, s - m, s - m, r); x.arcTo(s - m, s - m, m, s - m, r);
+  x.arcTo(m, s - m, m, m, r); x.arcTo(m, m, s - m, m, r);
+  x.closePath();
+  x.fillStyle = '#11366b'; x.fill();
+  x.lineWidth = 2.5; x.strokeStyle = '#fff'; x.stroke();
+  x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = `bold ${Math.round(s * 0.42)}px "Helvetica Neue",Arial,sans-serif`;
+  x.fillText('NR', s / 2, s / 2 + 1);
+  map.addImage('ic-nr', { width: s, height: s, data: x.getImageData(0, 0, s, s).data }, { pixelRatio: 2 });
+}
+
 function addPoiIcons(map) {
   for (const c of POI_CATS) emojiImage(map, 'ic-' + c.id, c.emoji, c.bg);
-  lockImage(map); lockFlightImage(map);
+  lockImage(map); lockFlightImage(map); nrImage(map);
 }
 
 export function createMap(container) {
@@ -166,9 +184,10 @@ export function createMap(container) {
       glyphs: BASE + 'glyphs/{fontstack}/{range}.pbf',
       sources: {
         base: BASES.colour.source,
-        railway: { type: 'raster', tileSize: 256, maxzoom: 19,
-          tiles: ['a', 'b', 'c'].map((s) => `https://${s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png`),
-          attribution: '<a href="https://www.openrailwaymap.org/">© OpenRailwayMap</a>' },
+        // Railways overlay (off by default) — loaded on first toggle, not at start,
+        // so it costs nothing unless asked for. Passenger track + NR stations, OSM.
+        railways: { type: 'geojson', data: empty(), attribution: '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a>' },
+        stations: { type: 'geojson', data: empty() },
         canalplan: { type: 'vector', url: 'pmtiles://canalplan', attribution: '<a href="https://canalplan.org.uk">© CanalPlanAC</a>' },
         route: { type: 'geojson', data: empty() },
         tracktrail: { type: 'geojson', data: empty() }, // breadcrumb of where you've been
@@ -182,9 +201,11 @@ export function createMap(container) {
       layers: [
         { id: 'bg', type: 'background', paint: { 'background-color': '#aadaff' } },
         { id: 'base', type: 'raster', source: 'base', paint: { 'raster-opacity': 0.95 } },
-        // railway overlay — off by default, toggled from the map key. Sits above the
-        // base but below the canals so the waterways stay the star where they cross.
-        { id: 'railway', type: 'raster', source: 'railway', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.9 } },
+        // passenger rail lines — faint light-grey context, off by default. Sits above
+        // the base but below the canals so the waterways stay the star where they cross.
+        { id: 'rail-line', type: 'line', source: 'railways', layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#9aa1ac', 'line-opacity': 0.65,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.5, 12, 1.1, 16, 2] } },
 
         { id: 'ww-unnav', type: 'line', source: 'canalplan', 'source-layer': 'canalplan_waterways', filter: ['!', NAVIGABLE],
           paint: { 'line-color': '#7a6a55', 'line-dasharray': [2, 2], 'line-width': 1.3 } },
@@ -209,6 +230,14 @@ export function createMap(container) {
         ...catLayers,
         // locks: always on, monochrome, clustered with a count
         ...lockLayers,
+        // passenger railway stations — National Rail "NR" badge + name, off by default
+        { id: 'rail-station', type: 'symbol', source: 'stations', minzoom: 9,
+          layout: { visibility: 'none', 'icon-image': 'ic-nr', 'icon-allow-overlap': true,
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.5, 14, 0.85],
+            'text-field': ['step', ['zoom'], '', 12, ['get', 'title']], 'text-font': ['Open Sans Regular'],
+            'text-size': 11, 'text-offset': [0, 1.05], 'text-anchor': 'top', 'text-optional': true },
+          paint: { 'text-color': '#11366b', 'text-halo-color': '#fff', 'text-halo-width': 1.4 } },
+
         { id: 'pl-label', type: 'symbol', source: 'canalplan', 'source-layer': 'canalplan_places', filter: ['in', ['get', 'layer'], ['literal', ['bigplaces', 'junctions']]], minzoom: 11,
           layout: { 'text-field': ['get', 'title'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-font': ['Open Sans Regular'], 'text-optional': true },
           paint: { 'text-color': '#0b2a3a', 'text-halo-color': '#f3e6c4', 'text-halo-width': 1.4 } },
@@ -248,6 +277,7 @@ export function createMap(container) {
     if (e.id === 'lock-arrow') addLockArrow(map);
     else if (e.id === 'ic-lock') lockImage(map);
     else if (e.id === 'ic-lock-flight') lockFlightImage(map);
+    else if (e.id === 'ic-nr') nrImage(map);
     else if (e.id?.startsWith('ic-')) { const c = POI_CATS.find((p) => 'ic-' + p.id === e.id); if (c) emojiImage(map, e.id, c.emoji, c.bg); }
   });
   return map;
@@ -296,6 +326,14 @@ export function setLocksAll(map, locks) {
 }
 export function setLayerVisible(map, id, on) {
   if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+}
+// Railway overlay data (lazy-loaded on first toggle). `rails` is a FeatureCollection
+// of passenger track; `stations` is [{lng,lat,title}] of NR passenger stations.
+export function setRailways(map, rails) {
+  map.getSource('railways')?.setData(rails || empty());
+}
+export function setStations(map, stations) {
+  map.getSource('stations')?.setData({ type: 'FeatureCollection', features: (stations || []).map((s) => ({ type: 'Feature', properties: { title: s.title, type: 'Railway station' }, geometry: { type: 'Point', coordinates: [s.lng, s.lat] } })) });
 }
 
 let baseKey = 'colour';

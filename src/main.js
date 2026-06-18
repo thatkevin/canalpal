@@ -1,4 +1,4 @@
-import { createMap, maplibregl, protocol, POI_LAYERS, POI_CATS, OVERLAYS, setRoute, setTrail, setRouteFacilities, setRouteLocks, setStoppages, setLockFlights, setLocksAll, setLayerVisible, fitRoute } from './map.js';
+import { createMap, maplibregl, protocol, POI_LAYERS, POI_CATS, OVERLAYS, setRoute, setTrail, setRouteFacilities, setRouteLocks, setStoppages, setLockFlights, setLocksAll, setLayerVisible, setRailways, setStations, fitRoute } from './map.js';
 import { estimate, formatDuration, getSettings, saveSettings, correctionFactor, logTrip } from './time-model.js';
 import RouterWorker from './router.worker.js?worker';
 
@@ -593,7 +593,7 @@ const legRow = (attr, c) => `<button type="button" class="leg-row" data-${attr}=
 function buildLegend() {
   const poi = POI_CATS.map((c) => legRow('cat', c)).join('');
   const overlays = OVERLAYS.map((c) => legRow('overlay', c)).join('');
-  $('legend-body').innerHTML = poi + (overlays ? `<div class="leg-sep"></div><p class="muted small leg-note">Extras — need a connection the first time, then cached as you pan.</p>${overlays}` : '');
+  $('legend-body').innerHTML = poi + (overlays ? `<div class="leg-sep"></div>${overlays}` : '');
   $('legend-body').querySelectorAll('.leg-row[data-cat]').forEach((el) => { el.onclick = () => toggleCat(el.dataset.cat); });
   $('legend-body').querySelectorAll('.leg-row[data-overlay]').forEach((el) => { el.onclick = () => toggleOverlay(el.dataset.overlay); });
   applyLayerPrefs();
@@ -620,10 +620,29 @@ function applyLayerPrefs() {
   }
   for (const c of OVERLAYS) {
     const on = prefs[c.id] === true; // default off
-    if (map) setLayerVisible(map, c.id, on);
+    if (map) {
+      if (on) loadOverlay(c.id); // fetch its data on first show, then it's cached
+      for (const lid of c.layers || [c.id]) setLayerVisible(map, lid, on);
+    }
     const el = document.querySelector(`.leg-row[data-overlay="${c.id}"]`);
     if (el) el.classList.toggle('leg-off', !on);
   }
+}
+// Overlay data is fetched only the first time it's switched on (and then served
+// from cache, online or off) — so users who never want it pay nothing up front.
+const overlayLoaded = {};
+async function loadOverlay(id) {
+  if (id !== 'railway' || overlayLoaded.railway) return;
+  overlayLoaded.railway = true;
+  try {
+    const [rails, stns] = await Promise.all([
+      fetch(BASE + 'data/osm/railways.geojson').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch(BASE + 'data/osm/stations.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]);
+    if (rails) setRailways(map, rails);
+    if (stns) setStations(map, stns);
+    if (!rails && !stns) overlayLoaded.railway = false; // let a later toggle retry
+  } catch { overlayLoaded.railway = false; }
 }
 buildLegend();
 

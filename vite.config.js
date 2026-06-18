@@ -64,7 +64,7 @@ export default defineConfig(() => ({
             // requests — so it's deliberately not handled here.
             // Raster basemap tiles (CARTO coloured/mono): cache visited tiles so
             // areas you've panned over keep working offline ("nearly offline").
-            urlPattern: ({ url }) => /basemaps\.cartocdn\.com|tile\.openstreetmap\.org|tiles\.openrailwaymap\.org/.test(url.host),
+            urlPattern: ({ url }) => /basemaps\.cartocdn\.com|tile\.openstreetmap\.org/.test(url.host),
             handler: 'CacheFirst',
             options: {
               cacheName: 'basemap-raster',
