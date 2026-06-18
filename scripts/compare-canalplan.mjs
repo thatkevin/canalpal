@@ -5,7 +5,7 @@
 // their data under a non-commercial + credit licence). So this script:
 //   1. computes OUR distance / locks / time / implied mph for each route, and
 //   2. merges CanalPlanAC figures you've collected BY HAND into
-//      data/canalplan-refs.json (open each printed planner link in a browser —
+//      scripts/canalplan-refs.json (open each printed planner link in a browser —
 //      that's normal human use — and read off their numbers).
 // Then it prints ours-vs-theirs with deltas, so you can sanity-check the speed
 // model. Run gently, by hand, a few routes at a time. Run: node scripts/compare-canalplan.mjs
@@ -32,7 +32,7 @@ const place = (title) => {
   return null;
 };
 
-// Curated chunks — add more here (keys must match data/canalplan-refs.json).
+// Curated chunks — add more here (keys must match scripts/canalplan-refs.json).
 const ROUTES = [
   { name: 'Worcester & Birmingham (Tardebigge top→bottom)', a: 'Tardebigge Top Lock No 58', b: 'Tardebigge Bottom Lock No 29' },
   { name: 'Worcester & Birmingham (Hanbury Jn→Kings Norton Jn)', a: 'Hanbury Junction', b: "King's Norton Junction" },
@@ -75,7 +75,7 @@ for (const r of ROUTES) {
 }
 console.log('-'.repeat(118));
 if (withRef) console.log(`Across ${withRef} route(s) with CanalPlanAC times: ours ${sumOurH.toFixed(1)}h vs theirs ${sumCpH.toFixed(1)}h (×${(sumOurH / sumCpH).toFixed(2)}).`);
-else console.log('No CanalPlanAC times collected yet — fill data/canalplan-refs.json from the links below.');
+else console.log('No CanalPlanAC times collected yet — fill scripts/canalplan-refs.json from the links below.');
 
-console.log('\nLook these up BY HAND on canalplan.uk (human use is fine; do not automate), then fill data/canalplan-refs.json:');
+console.log('\nLook these up BY HAND on canalplan.uk (human use is fine; do not automate), then fill scripts/canalplan-refs.json:');
 console.log(links.join('\n'));
